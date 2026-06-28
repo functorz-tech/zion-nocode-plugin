@@ -1,0 +1,14 @@
+{
+  "name": "zion",
+  "owner": {
+    "name": "Zion"
+  },
+  "description": "Zion no-code platform plugin for Claude Code and Codex.",
+  "plugins": [
+    {
+      "name": "zion-nocode",
+      "source": "./plugin",
+      "description": "Orientation and entry point for working on a Zion project. Load first for any Zion app task — designing or changing the data model, UI, server-side action flows, permissions, payments, or data bindings, or reading runtime logs — then follow it to the right capability. For Zion projects only; not generic programming help."
+    }
+  ]
+}

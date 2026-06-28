@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "zion": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "zion-mcp@2.0.16",
+        "mcp"
+      ]
+    }
+  }
+}

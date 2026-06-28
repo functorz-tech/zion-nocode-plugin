@@ -1,0 +1,17 @@
+#!/usr/bin/env node
+const { spawn } = require('node:child_process');
+
+function fail(error) {
+  console.error('[zion-mcp] Fatal error:', error);
+  process.exit(1);
+}
+
+const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const child = spawn(npx, ['-y', 'zion-mcp@2.0.16', ...process.argv.slice(2)], {
+  stdio: 'inherit',
+});
+child.on('error', fail);
+child.on('exit', (code, signal) => {
+  if (signal) process.kill(process.pid, signal);
+  else process.exit(code ?? 0);
+});

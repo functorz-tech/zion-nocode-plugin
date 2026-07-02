@@ -58,7 +58,7 @@ directly. Add it to your tool's MCP config:
   "mcpServers": {
     "zion": {
       "command": "npx",
-      "args": ["-y", "zion-mcp", "mcp"]
+      "args": ["-y", "zion-mcp@latest", "mcp"]
     }
   }
 }

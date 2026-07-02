@@ -15,28 +15,28 @@ Special (complex — add children to their built-in slots, NOT directly to the c
 - SELECT_VIEW: has built-in selected/unselected state views.
 - CONDITIONAL_VIEW: has a built-in view per condition branch.
 
-Leaf/Business (cannot have children):
-BUTTON, TEXT, IMAGE, VIDEO, LOTTIE, RICH_TEXT, TEXT_INPUT, NUMBER_INPUT, VIDEO_PICKER,
-FILE_PICKER, SWITCH, MAP, MAP_MARKER, CALENDAR, HORIZONTAL_LINE, SHEET, HTML,
-RICH_TEXT_EDITOR, MIX_IMAGE_PICKER, DATE_TIME_PICKER, DATA_SELECTOR, PROGRESS_BAR.
-MAP_MARKER can only be placed inside MAP.
+Leaf/Business (cannot have children): BUTTON, TEXT, IMAGE, VIDEO, LOTTIE, RICH_TEXT, TEXT_INPUT, NUMBER_INPUT, VIDEO_PICKER, FILE_PICKER, SWITCH, MAP, MAP_MARKER, CALENDAR, HORIZONTAL_LINE, SHEET, HTML, RICH_TEXT_EDITOR, MIX_IMAGE_PICKER, DATE_TIME_PICKER, DATA_SELECTOR, PROGRESS_BAR. MAP_MARKER can only be placed inside MAP.
 
 ### Hierarchy Rules
-Every component except PAGE and MODAL must have a Layout Component as its parent.
-Prefer relative positioning; use absolute/fixed only when truly necessary.
+Every component except PAGE and MODAL must have a Layout Component as its parent. Prefer relative positioning; use absolute/fixed only when truly necessary.
 
 ### Layout
-Zion uses Flexbox. Layout containers configure: direction (row/column), justify-content
-(start, space-between, space-evenly, space-around), gap, wrap, overflow (scroll/visible/hidden).
+Zion uses Flexbox. Layout containers configure: direction (row/column), justify-content (start, space-between, space-evenly, space-around), gap, wrap, overflow (scroll/visible/hidden).
 
 ### Responsive Breakpoints
-Phone: 0–767 px | Tablet: 768–1279 px | Desktop: 1280–1920 px.
-Primary breakpoint is Desktop; changes propagate unless overridden per breakpoint.
+Phone: 0–767 px | Tablet: 768–1279 px | Desktop: 1280–1920 px. Primary breakpoint is Desktop; changes propagate unless overridden per breakpoint.
 
 ### Component Configuration (right sidebar in editor)
 - Design tab: layout, spacing, size, visual styles.
 - Data tab: bind data sources, conditional visibility.
 - Action tab: event triggers (onClick, onChange, onLoad, etc.).
+
+### Reading the Component Tree
+These read tools inspect the live component tree (component construction and editing are done in the editor, not here):
+- `list_pages` — display names of all pages in the project.
+- `get_component_info` — one component's type and config, by its component id.
+- `get_container_children` — the direct children of a container (or a special component's slot), by the container's id.
+- `get_component_context` — a component together with its ancestor chain and siblings, so you can see where it sits in the page.
 
 ## How to drive it (CLI only)
 
@@ -62,6 +62,8 @@ Each call is applied immediately — any resulting CRDT patch is uploaded. Batch
 |---|---|---|
 | List pages | `GET_ALL_PAGE_NAMES` | — |
 | Component info | `GET_COMPONENT_INFO` | `componentId` |
+| Data/vars in scope at a component | `GET_COMPONENT_CONTEXT_INFO` | `componentId` |
+| Container children info | `GET_CONTAINER_CHILDREN_INFO` | `componentId` |
 
 Building or changing UI is the user's job, done in the editor — not yours. Component create / update / delete is intentionally unavailable through the CLI, so for anything visual (pages, components, layout, styling) **only instruct the user**: give concrete, numbered editor steps for them to perform, and never attempt to build UI on their behalf. Through the CLI you can only *inspect* the component tree (above) and bind already-placed component properties to data with `data-binding.md`.
 

@@ -1,35 +1,22 @@
 # Third-party API configs (TPA)
 
 ## Third-Party API (TPA) Domain Knowledge
-A Third-Party API config is a saved external REST endpoint the project can call — from an action
-flow's "Call API" node or from Run Code via `context.callThirdPartyApi(apiId, params)`.
+A Third-Party API config is a saved external REST endpoint the project can call — from an action flow's "Call API" node or from Run Code via `context.callThirdPartyApi(apiId, params)`.
 
 ### Anatomy of a config
-- **Endpoint**: a `url` plus an HTTP `method` (GET/POST/PUT/DELETE) and an `operation`
-  (`query` = read-only, `mutation` = state-changing). Optionally a request content type and a CA
-  certificate (PEM, base64) for mutual TLS.
-- **Request parameters**: typed inputs sent with the call. Each has a `position`: `QUERY` (query
-  string), `PATH` (URL path segment), `HEADER`, or `BODY`. A parameter whose type is `OBJECT` or
-  `ARRAY` holds nested **children**.
-- **Response**: three branches keyed by outcome — `SUCCESS`, `PERMANENT_FAIL`, `TEMPORARY_FAIL`.
-  Each branch carries a typed **response-data** tree describing the JSON the endpoint returns so
-  downstream nodes can bind to its fields. `OBJECT`/`ARRAY` response data hold nested children.
+- **Endpoint**: a `url` (absolute, with scheme and host — the runtime has no base to resolve a relative path against) plus an HTTP `method` (GET/POST/PUT/DELETE) and an `operation` (`query` = read-only, `mutation` = state-changing). Optionally a request content type and a CA certificate (PEM, base64) for mutual TLS.
+- **Request parameters**: typed inputs sent with the call. Each has a `position`: `QUERY` (query string), `PATH` (URL path segment), `HEADER`, or `BODY`. A parameter whose type is `OBJECT` or `ARRAY` holds nested **children**.
+- **Response**: three branches keyed by outcome — `SUCCESS`, `PERMANENT_FAIL`, `TEMPORARY_FAIL`. Each branch carries a typed **response-data** tree describing the JSON the endpoint returns so downstream nodes can bind to its fields. `OBJECT`/`ARRAY` response data hold nested children.
 - **Paging** (optional): pagination config for list endpoints.
 
 ### Data types
-TPA fields use the TPA type set, independent of the project's type-system setting: TEXT, INTEGER,
-BIGINT, FLOAT8, DECIMAL, BOOLEAN, IMAGE, OBJECT, ARRAY. For an ARRAY give its `itemType`; for an
-OBJECT or ARRAY add the field shape with the `add_parameter_children` /
-`add_response_data_children` tools.
+TPA fields use the TPA type set, independent of the project's type-system setting: TEXT, INTEGER, BIGINT, FLOAT8, DECIMAL, BOOLEAN, IMAGE, OBJECT, ARRAY. For an ARRAY give its `itemType`; for an OBJECT or ARRAY add the field shape with the `add_parameter_children` / `add_response_data_children` tools.
 
 ### Workflow
-List configs with `list_configs`, then `get_config_detail` to read a config's parameter and
-response `uniqueId`s — you pass these ids to the child tools. Create endpoints with
-`create_configs`; add request inputs with `add_parameters` (and `add_parameter_children` for
-object/array fields). Describe each response branch with `set_response_data`, then
-`add_response_data_children` for nested fields. Configure list pagination with `set_paging`.
-Editing a config creates a new version; "Sync Backend" is required for changes to take effect in
-production.
+List configs with `list_configs`, then `get_config_detail` to read a config's parameter and response `uniqueId`s — you pass these ids to the child tools. Create endpoints with `create_configs`; add request inputs with `add_parameters` (and `add_parameter_children` for object/array fields). Describe each response branch with `set_response_data`, then `add_response_data_children` for nested fields. Configure list pagination with `set_paging`. Editing a config creates a new version; "Sync Backend" is required for changes to take effect in production.
+
+### Importing from an OpenAPI / Swagger spec
+To onboard an existing API, prefer `import_from_openapi` over hand-building configs: pass the spec as a `url` (fetched server-side; internal/private addresses are blocked) or paste it as `specText` (JSON or YAML). It creates each operation as a full TPA endpoint — parameters, body, and success/fail response shape — in one call, capped at 25 endpoints (use `pathsFilter` to scope larger specs); a failed import is rolled back. If the spec declares no absolute server URL the imported configs get relative urls — fix each with `update_config` using the base URL from the documentation. When you only have a human-readable docs page, `fetch_doc` retrieves it (SSRF-guarded) and lets you explore the documentation iteratively: follow the returned same-site `pageLinks`, keep reading long pages with `offset`, and watch `specLinks` for a machine-readable spec to import — all within a 15-fetch session budget. If no spec exists, author the configs with the granular tools above from what you read.
 
 ## How to drive it (CLI only)
 
@@ -59,9 +46,17 @@ Each call is applied immediately — any resulting CRDT patch is uploaded. Batch
 | Update a config | `UPDATE_TPA_CONFIG` | `tpaConfigId` |
 | Delete configs | `DELETE_TPA_CONFIGS` | `tpaConfigIds` |
 | Add request parameters | `ADD_TPA_CONFIG_PARAMETERS` | `items`, `tpaConfigId` |
+| Update a request parameter | `UPDATE_TPA_CONFIG_PARAMETER` | `parameterUniqueId`, `tpaConfigId` |
+| Delete request parameters | `DELETE_TPA_CONFIG_PARAMETERS` | `parameterUniqueIds`, `tpaConfigId` |
 | Add nested parameter children | `ADD_TPA_PARAMETER_CHILDREN` | `items`, `parentUniqueId`, `tpaConfigId` |
+| Update a parameter child | `UPDATE_TPA_PARAMETER_CHILD` | `dataUniqueId`, `tpaConfigId` |
+| Delete parameter children | `DELETE_TPA_PARAMETER_CHILDREN` | `dataUniqueIds`, `tpaConfigId` |
 | Add response data | `ADD_TPA_RESPONSE_DATA` | `responseBranch`, `responseData`, `tpaConfigId` |
+| Update response data | `UPDATE_TPA_RESPONSE_DATA` | `responseBranch`, `tpaConfigId` |
+| Delete response data | `DELETE_TPA_RESPONSE_DATA` | `responseBranch`, `tpaConfigId` |
 | Add nested response children | `ADD_TPA_RESPONSE_DATA_CHILDREN` | `items`, `parentUniqueId`, `responseBranch`, `tpaConfigId` |
+| Update a response child | `UPDATE_TPA_RESPONSE_DATA_CHILD` | `dataUniqueId`, `responseBranch`, `tpaConfigId` |
+| Delete response children | `DELETE_TPA_RESPONSE_DATA_CHILDREN` | `dataUniqueIds`, `responseBranch`, `tpaConfigId` |
 | Set paging | `SET_TPA_CONFIG_PAGING` | `tpaConfigId` |
 
 A TPA config is an external HTTP/GraphQL integration usable as a project data source. Add the
@@ -87,12 +82,36 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `url`: `string`
 
 ### `ADD_TPA_CONFIG_PARAMETERS`
-- `items` *(required)*: `object`
+- `items` *(required)*: `map<enum(BODY|HEADER|QUERY|PATH), {defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}>`
 - `tpaConfigId` *(required)*: `string`
+
+### `UPDATE_TPA_CONFIG_PARAMETER`
+- `defaultValue`: `string`
+- `itemType`: `string`
+- `name`: `string`
+- `parameterUniqueId` *(required)*: `string`
+- `required`: `boolean`
+- `tpaConfigId` *(required)*: `string`
+- `type`: `string`
 
 ### `ADD_TPA_RESPONSE_DATA`
 - `responseBranch` *(required)*: `enum(SUCCESS|PERMANENT_FAIL|TEMPORARY_FAIL)`
 - `responseData` *(required)*: `{defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}`
+- `tpaConfigId` *(required)*: `string`
+
+### `UPDATE_TPA_RESPONSE_DATA`
+- `defaultValue`: `string`
+- `itemType`: `string`
+- `name`: `string`
+- `required`: `boolean`
+- `responseBranch` *(required)*: `enum(SUCCESS|PERMANENT_FAIL|TEMPORARY_FAIL)`
+- `tpaConfigId` *(required)*: `string`
+- `type`: `string`
+
+### `SET_TPA_CONFIG_PAGING`
+- `pageIndexPath`: `array<string>`
+- `pageIndexStartValue`: `integer`
+- `pageSizePath`: `array<string>`
 - `tpaConfigId` *(required)*: `string`
 
 Then ship:

@@ -1,26 +1,23 @@
 # AI agents (ZAI)
 
 ## AI Agent (ZAI) Domain Knowledge
-A ZAI config is an LLM-backed agent the app runs via a "Run AI" action / action-flow node
-(asynchronous only). An agent has a name + description, a model, sampling settings
-(temperature, maxRound, max output tokens), a system + user **prompt**, and its **output**.
+A ZAI config is an LLM-backed agent the app runs via a "Run AI" action / action-flow node (asynchronous only). An agent has a name + description, a model, sampling settings (temperature, maxRound, max output tokens), a system + user **prompt**, and its **output**.
 
 ### Reading
-`list_configs` summarizes every agent; `get_config_detail` returns one agent's full config — its
-input args (with their map keys), its prompt components each with the **schema path** of its
-text binding, and its output config.
+`list_configs` summarizes every agent; `get_config_detail` returns one agent's full config — its input args (with their map keys), its prompt components each with the **schema path** of its text binding, and its output config.
 
 ### Creating & editing
-`create_configs` seeds an agent with default empty system + user prompts and plain-text output;
-adding the first agent also provisions the AI conversation tables/relations/permissions. Edit
-scalar config (name, description, temperature, maxRound, model) with `update_config`. Leave the
-model unset to configure it later in the editor — there is no model-listing tool, so never
-hand-build a model identifier.
+`create_configs` seeds an agent with default empty system + user prompts and plain-text output; adding the first agent also provisions the AI conversation tables/relations/permissions. Edit scalar config (name, description, temperature, maxRound) with `update_config`. The **model** is also set via `update_config` — pass `customModelIdentifier` ({id, namespace}) with an id from the platform's supported-model descriptor (`supportedCustomModelDescriptor.chatModelDescriptors`, which lists each model's exact identifier and features such as vision / file support). Never fabricate an id; if you cannot obtain one, leave the model unset for the user to pick in the editor.
 
 ### Prompts are bindings, not a ZAI tool
-A prompt's text is an ordinary data binding. Read its `valueSchemaPath` from `get_config_detail`
-and edit it with the bindings plugin (the CREATE_*_BINDING tools) at that path — there is no ZAI
-prompt-edit tool.
+A prompt's text is an ordinary data binding. Read its `valueSchemaPath` from `get_config_detail` and edit it with the bindings plugin (the CREATE_*_BINDING tools) at that path — there is no ZAI prompt-edit tool.
+
+### System AI conversation tables
+Creating the first agent provisions four protected system tables that store agent runs. They are platform-managed (read-only — never add fields to or edit them; for a user-facing chat feature build your own tables instead). Their individual roles, in a 1:n chain:
+- `conversation` — a chat thread with an agent, owned by an account (account → conversations).
+- `message` — one turn within a conversation (conversation → messages); also linked to its account.
+- `message_content` — a single content block of a message: text or media, image / video / file (message → contents).
+- `tool_usage_record` — a record of one tool call made while producing a message, including any error (message → tool_calls).
 
 ### Typed input args & output
 
@@ -54,8 +51,11 @@ each field's type is one of:
 - date
 - object (a nested object with its own fields)
 - array (a list of any of the above except a nested array)
-When the user wants a typed agent output, ask them to configure the structured output in the
-editor with these field types, and wait for their confirmation before continuing.
+When the user wants a typed agent output, either (a) ask them to configure the structured output
+in the editor with these field types and confirm before continuing, or (b) — fully via tools —
+keep **plain-text** output and pin the exact JSON shape in the **user prompt** (e.g. "Return ONLY
+JSON matching {...}"), then have the caller parse the returned text (stripping any ```json fences).
+Option (b) is the only no-editor path in the legacy type system.
 
 ## How to drive it (CLI only)
 
@@ -96,6 +96,13 @@ Read ids and the prompt/output `schemaPath`s back from `GET_ZAI_CONFIG_DETAIL`, 
 and input-arg bindings with `data-binding.md` at those paths. An action flow invokes the agent via a
 Run AI node (`actionflow.md`) that references the config by id.
 
+**Choosing a model (no editor needed):** set it with `UPDATE_ZAI_CONFIG`'s `customModelIdentifier` ({id, namespace}). Discover valid ids + features (vision / file support) from the backend descriptor:
+
+```bash
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" zb graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
+```
+Copy an `id` (with its `namespace`) back verbatim — never fabricate one — then verify with `GET_ZAI_CONFIG_DETAIL`.
+
 ## Arguments (generated from ztype)
 
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
@@ -122,7 +129,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `isStreaming`: `boolean` — Whether the plain-text output streams. Only meaningful when not structured.
 - `isStructured`: `boolean` — Whether the agent emits a structured (typed) output (true) or plain text (false). Switching to structured seeds `outputType` to string when none is given; switching to plain text drops the output type.
 - `maxTokenSize`: `integer` — Max output token size.
-- `outputDescriptionConfig`: `{description?: string, fieldDescriptionByType?: object}` — Field-description config for the output: a `description` plus `fieldDescriptionByType` (per-type field descriptions). Replaces the whole description config when provided.
+- `outputDescriptionConfig`: `{description?: string, fieldDescriptionByType?: map<string, object>}` — Field-description config for the output: a `description` plus `fieldDescriptionByType` (per-type field descriptions). Replaces the whole description config when provided.
 - `outputType`: `string` — The structured output's type (refactored type system). Copy a `typeIdentifier` returned by GET_ZAI_CONFIG_SELECTABLE_TYPES verbatim — never hand-build the string. Only meaningful when the output is structured.
 
 Then ship:

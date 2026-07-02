@@ -4,15 +4,12 @@
 Zion uses PostgreSQL. Data model changes require "Sync Backend" to take effect online.
 
 ### Capabilities & Limitations
-You can: create and delete tables, fields, relations, and unique constraints; rename a
-table; rename a column or change its displayName / required / unique / default value.
+You can: create and delete tables, fields, relations, and unique constraints; rename a table; rename a column or change its displayName / required / unique / default value.
 
 You CANNOT:
-- Change an existing column's TYPE. To change a type, delete the column and create a new
-  one with the desired type.
+- Change an existing column's TYPE. To change a type, delete the column and create a new one with the desired type.
 - Update an existing relation or constraint. To change one, delete it and recreate it.
-- Create formula / computed fields. If the user asks for one, explain that formulas must
-  be configured manually in the editor; do not create them.
+- Create formula / computed fields. If the user asks for one, explain that formulas must be configured manually in the editor; do not create them.
 
 ### Column Types
 A column's 'type' is the UPPERCASE type name, exactly as written (it is case-sensitive).
@@ -28,27 +25,19 @@ inputs/outputs — never in a column's 'type' field):
 - Optional fields prepend "null|" (e.g. "null|s:p:bigint").
 
 ### Naming
-systemName: English snake_case. Tables are nouns or noun phrases, singular not plural
-("order", not "orders"), concise (e.g. "user_profile"); fields are snake_case
-(e.g. "first_name", "is_active").
-displayName: user-visible; prefer it IDENTICAL to the systemName (e.g. systemName "first_name" → displayName "first_name").
+systemName: English snake_case. Tables are nouns or noun phrases, singular not plural ("order", not "orders"), concise (e.g. "user_profile"); fields are snake_case (e.g. "first_name", "is_active"). displayName: user-visible; use the natural Chinese name as the displayName and derive the English snake_case systemName from it (e.g. displayName "用户名" → systemName "user_name").
 
 ### System Built-ins & Product Context
-Every table has non-deletable built-in fields: id (BIGINT), created_at (TIMESTAMPTZ),
-updated_at (TIMESTAMPTZ). Do NOT include these when creating a table.
-Any table, field, or relation where 'editable' is false is system built-in and cannot be modified or deleted.
-System tables and timezone configurations for Zion:
-* UTC Offset: +00:00
-* Protected Account Table: 'account' (can add/delete user-defined fields, but cannot delete table itself)
-* Protected Payment Tables: 'payment_record', 'recurring_payment', 'refund' (cannot be modified or deleted)
-* Protected AI/Session Tables: 'conversation', 'message', 'tool_usage_record', 'message_content' (cannot be modified or deleted)
-The system built-in AI tables are strictly for system AI functions. For user chat systems, always create custom user-defined tables (e.g. 'user_chat', 'chat_message').
+Every table has non-deletable built-in fields: id (BIGINT), created_at (TIMESTAMPTZ), updated_at (TIMESTAMPTZ). Do NOT include these when creating a table. Any table, field, or relation where 'editable' is false is system built-in and cannot be modified or deleted. System tables and timezone configurations for Zion:
+* UTC Offset: +08:00
+* Protected Account Table: '帐户(账户)' (can add/delete user-defined fields, but cannot delete table itself)
+* Protected Payment Tables: '支付', '周期性支付', '退款' (cannot be modified or deleted)
+* Protected AI/Session Tables: '会话', '消息', '工具使用记录', '消息内容' (cannot be modified or deleted) The system built-in AI tables are strictly for system AI functions. For user chat systems, always create custom user-defined tables (e.g. 'user_chat', 'chat_message').
 
 ### Required Fields & Default Values
-When creating a new field with 'required = true', a default value must be set simultaneously, except for types that do not support default values.
-Default value formatting:
+When creating a new field with 'required = true', a default value must be set simultaneously, except for types that do not support default values. Default value formatting:
 - Numbers/Booleans: Use literal values (e.g., 10, true).
-- Dates/Times: Strictly use ISO 8601 strings (e.g., TIMESTAMPTZ: '2025-12-09T16:02:03.000Z', DATE: '2025-12-09', TIMETZ: '16:02:03+00:00').
+- Dates/Times: Strictly use ISO 8601 strings (e.g., TIMESTAMPTZ: '2025-12-09T16:02:03.000Z', DATE: '2025-12-09', TIMETZ: '16:02:03+08:00').
 
 - String: Use plain strings.
 - Jsonb: Use stringified JSON objects.
@@ -56,41 +45,27 @@ Default value formatting:
 
 ### Relations
 Types: one_to_one, one_to_many. Defined on the source table.
-To make one table reference another, create a RELATION — never add a manual foreign-key
-column (e.g. a "*_id" field) or a column whose type is another table. The FK column and
-the virtual reference fields are generated automatically. Add the relation on the SOURCE
-table only; it is reflected on the target automatically.
-A relation is configured by five fields: source table, target table, source-side field
-display name, target-side field display name, and relation type.
-Relation record fields: relationType, sourceTableDisplayName, targetTableDisplayName,
-fieldDisplayNameInSourceTable, fieldDisplayNameInTargetTable, editable.
+To make one table reference another, create a RELATION — never add a manual foreign-key column (e.g. a "*_id" field) or a column whose type is another table. The FK column and the virtual reference fields are generated automatically. Add the relation on the SOURCE table only; it is reflected on the target automatically.
+A relation is configured by five fields: source table, target table, source-side field display name, target-side field display name, and relation type. Relation record fields: relationType, sourceTableDisplayName, targetTableDisplayName, fieldDisplayNameInSourceTable, fieldDisplayNameInTargetTable, editable.
 Creating a relation auto-generates:
-- A non-editable FK field in the target table named fieldDisplayNameInTargetTable + "_id"
-  (e.g. "user_id", "活动_id"). Stores the source row's id. Deleted when the relation is deleted.
-- Virtual reference fields in both tables (NOT real columns), one per side:
-  fieldDisplayNameInSourceTable lives on the source; fieldDisplayNameInTargetTable lives on the target.
+- A non-editable FK field in the target table named fieldDisplayNameInTargetTable + "_id" (e.g. "user_id", "活动_id"). Stores the source row's id. Deleted when the relation is deleted.
+- Virtual reference fields in both tables (NOT real columns), one per side: fieldDisplayNameInSourceTable lives on the source; fieldDisplayNameInTargetTable lives on the target.
 Examples:
 - 1:n user (source) → post (target), source field "posts", target field "user"
-  ⇒ user has virtual list "posts"; post has virtual reference "user" and FK column "user_id".
+⇒ user has virtual list "posts"; post has virtual reference "user" and FK column "user_id".
 - 1:n post (source) → comment (target), source field "comments", target field "post"
-  ⇒ post has virtual list "comments"; comment has virtual reference "post" and FK column "post_id".
+⇒ post has virtual list "comments"; comment has virtual reference "post" and FK column "post_id".
 - 1:1 user (source) → profile (target), source field "profile", target field "user"
-  ⇒ user has virtual reference "profile"; profile has virtual reference "user" and FK column "user_id".
+⇒ user has virtual reference "profile"; profile has virtual reference "user" and FK column "user_id".
 Relations only between editable (user-created) tables.
 Many-to-many: use an intermediate join table + two one-to-many relations.
 To unique-constrain a relation field, use the FK field name ("user_id"), not the virtual name.
 
 ### Geographic Location
-Use GEO_POINT for coordinates. Never split into separate latitude/longitude fields.
-A GEO_POINT field auto-generates a companion DECIMAL hack field named
-"fz_distance_from_<systemName>", where <systemName> is the geo_point's systemName
-(may differ from its displayName). At request time it returns the distance from the
-stored geo_point to the user-supplied location in the request. Treat it as a
-distance-calculation hack — future migration: this will be replaced by formula fields.
+Use GEO_POINT for coordinates. Never split into separate latitude/longitude fields. A GEO_POINT field auto-generates a companion DECIMAL hack field named "fz_distance_from_<systemName>", where <systemName> is the geo_point's systemName (may differ from its displayName). At request time it returns the distance from the stored geo_point to the user-supplied location in the request. Treat it as a distance-calculation hack — future migration: this will be replaced by formula fields.
 
 ### Constraints
-Only unique constraints supported. Names: lowercase English snake_case, no uppercase.
-Combination constraints: list multiple field display names.
+Only unique constraints supported. Constraint name: lowercase English snake_case, no uppercase. Reference columns by their system name (snake_case), not their display name — for a relation's foreign key use the FK column name ("user_id"). A single-column unique constraint can also be set via a field's 'unique' flag; use a constraint to span multiple columns (composite unique): list the columns' system names.
 
 ## How to drive it (CLI only)
 
@@ -119,16 +94,21 @@ Each call is applied immediately — any resulting CRDT patch is uploaded. Batch
 | Create tables | `ADD_TABLES` | `items` |
 | Delete tables | `DELETE_TABLES` | `tableDisplayNames` |
 | Add fields/relations | `ADD_FIELDS_AND_RELATIONS` | `fields`, `relations`, `tableDisplayName` |
+| Delete fields/relations | `DELETE_FIELDS_AND_RELATIONS` | `fieldDisplayNames`, `relationFieldDisplayNamesInSourceTable`, `tableDisplayName` |
 | Add unique constraints | `ADD_CONSTRAINTS` | `constraints` |
+| Delete unique constraints | `DELETE_CONSTRAINTS` | `constraints` |
+| Extend a built-in table (add column) | `ADD_TABLE_EXTENSION` | `columnDisplayName`, `tableDisplayName` |
+| Remove a built-in-table extension column | `DELETE_TABLE_EXTENSION` | `columnDisplayName`, `tableDisplayName` |
+| List embedding models (vector columns) | `GET_AVAILABLE_EMBEDDING_MODELS` | — |
 
 ## Worked example: create a `post` table
 
 ```bash
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
-    {"tableDisplayName":"post","tableSystemName":"post","relations":[],"fields":[
-      {"systemName":"title","displayName":"title","basicTypeNameOrTypeId":"TEXT","required":true,"defaultValue":""},
-      {"systemName":"view_count","displayName":"view_count","basicTypeNameOrTypeId":"BIGINT","required":true,"defaultValue":0}
+    {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
+      {"apiName":"title","displayName":"title","basicTypeNameOrTypeId":"TEXT","required":true,"defaultValue":""},
+      {"apiName":"view_count","displayName":"view_count","basicTypeNameOrTypeId":"BIGINT","required":true,"defaultValue":0}
     ]}
   ]}}
 ]'
@@ -146,8 +126,25 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `relations` *(required)*: `array<{fieldApiNameInSourceTable: string, fieldApiNameInTargetTable: string, fieldDisplayNameInSourceTable: string, fieldDisplayNameInTargetTable: string, relationType: string, sourceTableDisplayName: string, targetTableDisplayName: string}>`
 - `tableDisplayName` *(required)*: `string`
 
+### `DELETE_FIELDS_AND_RELATIONS`
+- `fieldDisplayNames` *(required)*: `array<string>` — Display names of the fields to delete
+- `relationFieldDisplayNamesInSourceTable` *(required)*: `array<string>` — fieldDisplayNameInSourceTable of the relations to delete
+- `tableDisplayName` *(required)*: `string` — Source table display name
+
 ### `ADD_CONSTRAINTS`
 - `constraints` *(required)*: `array<{constraintName: string, constraintType: string, fieldDisplayNames: array<string>, tableDisplayName: string}>`
+
+### `DELETE_CONSTRAINTS`
+- `constraints` *(required)*: `array<{constraintName: string, tableDisplayName: string}>`
+
+### `ADD_TABLE_EXTENSION`
+- `columnDisplayName` *(required)*: `string`
+- `customEmbeddingId`: `string`
+- `tableDisplayName` *(required)*: `string`
+
+### `DELETE_TABLE_EXTENSION`
+- `columnDisplayName` *(required)*: `string`
+- `tableDisplayName` *(required)*: `string`
 
 Then ship:
 

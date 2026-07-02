@@ -1,58 +1,35 @@
 # Permissions (RBAC + ABAC)
 
 ## Permission System Domain Knowledge
-Zion uses RBAC (Role-Based Access Control) combined with ABAC (Attribute-Based Access
-Control) to secure data and actions. Permission changes require "Sync Backend" to take effect.
+Zion uses RBAC (Role-Based Access Control) combined with ABAC (Attribute-Based Access Control) to secure data and actions. Permission changes require "Sync Backend" to take effect.
 
 ### Core Concepts
-Role: a named collection of users. A user can have multiple roles; their effective
-permissions are the union of all roles' permissions.
-Data Permission: controls what a role can read/write in the database (table, column, row).
-Action Permission: controls which APIs, Actionflows, AI functions, and payment operations
-a role can invoke.
+Role: a named collection of users. A user can have multiple roles; their effective permissions are the union of all roles' permissions. Data Permission: controls what a role can read/write in the database (table, column, row). Action Permission: controls which APIs, Actionflows, AI functions, and payment operations a role can invoke.
 
 ### Built-in Roles (always present, cannot be deleted)
 - Logged-in User: automatically assigned to every authenticated user.
-- Anonymous User: applies to unauthenticated (not logged in) users.
-Custom roles are created in Settings → Permission Management. Role names are immutable
-once deployed to the backend — advise users to name carefully.
-Plan limits: Free = 0 custom roles, Basic = 1, Pro = 10.
+- Anonymous User: applies to unauthenticated (not logged in) users. Custom roles are created in Settings → Permission Management. Role names are immutable once deployed to the backend — advise users to name carefully. Plan limits: Free = 0 custom roles, Basic = 1, Pro = 10.
 
 ### Data Permissions (three levels, configured coarse → fine)
 1. Table-level: CRUD access + aggregate queries (count, sum, avg) for the entire table.
 2. Column-level: CRUD access per field — field-level security.
-3. Row-level: conditional filter rules evaluated at query time — e.g., "user can only
-   update orders they created" (ABAC). Configured as "Advanced Filtering" on the table op.
+3. Row-level: conditional filter rules evaluated at query time — e.g., "user can only update orders they created" (ABAC). Configured as "Advanced Filtering" on the table op.
 
 ### Action Permissions
-Covers: APIs, Actionflows, AI functions, payment operations.
-All except payments support "Advanced Filtering" for fine-grained ABAC rules (e.g.,
-"Actionflow input params must not be empty").
+Covers: APIs, Actionflows, AI functions, payment operations. All except payments support "Advanced Filtering" for fine-grained ABAC rules (e.g., "Actionflow input params must not be empty").
 
 ### Role Assignment
 - Manual: assign in the Permission Management UI.
-- Automatic: use the Permissions node inside an Actionflow (e.g., grant VIP role after
-  purchase). Actionflow-based role grants/revocations take effect immediately — no
-  backend sync required.
+- Automatic: use the Permissions node inside an Actionflow (e.g., grant VIP role after purchase). Actionflow-based role grants/revocations take effect immediately — no backend sync required.
 
 ### Troubleshooting Permission Errors
-403 errors surface in runtime logs and client responses:
-```json
-{
-  "errorCode": 403,
-  "extensions": { "classification": "TABLE_ACCESS" },
-  "message": "User 1 has no permission for SELECT on order"
-}
-```
-"User 1" means the user whose numeric ID ends in 1 (internal ID = 1000000000000001).
-Diagnostic steps:
+403 errors surface in runtime logs and client responses: ```json { "errorCode": 403, "extensions": { "classification": "TABLE_ACCESS" }, "message": "User 1 has no permission for SELECT on order" } ``` "User 1" means the user whose numeric ID ends in 1 (internal ID = 1000000000000001). Diagnostic steps:
 1. Confirm the user has been assigned the correct role.
 2. Verify the role's table/column/row permission configuration in Settings.
 3. Confirm "Sync Backend" was run after the last permission config change.
 
 ### Security Flaws & Vulnerabilities in PermissionConfig / RoleConfig (Critical Analysis)
-When analyzing permission structures, watch out for the following critical security flaws in how
-`com.functorz.ztype.typesystem.schema.PermissionConfig` and `RoleConfig` are defined in the project:
+When analyzing permission structures, watch out for the following critical security flaws in how `com.functorz.ztype.typesystem.schema.PermissionConfig` and `RoleConfig` are defined in the project:
 
 1. **The "allowAll" Bypass Flaw (`tpaPermission`, `actionflowPermission`, `zAiPermission`):**
    - The `allowAll` boolean field acts as an all-or-nothing bypass. If `allowAll == true`, it completely overrides any specific resource limits (like `allowedApiIds` or `allowedActionflowIds`). If a developer accidentally enables this on custom roles (or the built-in Anonymous User), it instantly exposes all APIs and backend Actionflows to exploitation, violating the Principle of Least Privilege.
@@ -96,14 +73,11 @@ When users ask whether to create a new Permission Role or add a custom Field on 
    - Instead, use the **Relation-First Pattern**:
      - Create a `1:n` relation from your context table (e.g., `department`) to the `Account` table. This auto-generates a non-editable `department_id` FK column on the `Account` table.
      - Create a `1:n` relation from your context table to the data table (e.g., `sales_record`). This auto-generates `department_id` FK column on the data table.
-   - Define a single generic role (`Sales_Staff`) and configure a Row-Level Security filter using the auto-generated FK columns:
-     Table.department_id == Account.department_id
+   - Define a single generic role (`Sales_Staff`) and configure a Row-Level Security filter using the auto-generated FK columns:    Table.department_id == Account.department_id
    - Never manually declare foreign key columns (like `department_id` as a raw integer/bigint field), as the system forbids manual foreign key columns and requires relations.
 
 ### Scope Note
-Permission configuration (creating roles, setting table/column/row permissions) is done
-in the editor Settings panel, not via agent tools. The agent can analyze permission errors
-in logs and advise on configuration — it cannot apply permission changes directly.
+Permission configuration (creating roles, setting table/column/row permissions) is done in the editor Settings panel, not via agent tools. The agent can analyze permission errors in logs and advise on configuration — it cannot apply permission changes directly.
 
 ## Consultant mode (no direct edits)
 

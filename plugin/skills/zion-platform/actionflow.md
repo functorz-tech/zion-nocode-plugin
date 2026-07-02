@@ -1,100 +1,47 @@
 # Action flows (server-side workflows)
 
 ## Actionflow Domain Knowledge
-Actionflows are server-side workflows for business logic. They run entirely on the server;
-the frontend triggers them via "Request – Actionflow" component actions.
+Actionflows are server-side workflows for business logic. They run entirely on the server; the frontend triggers them via "Request – Actionflow" component actions.
 
 ### Execution Modes
-Synchronous: caller blocks for the result; ACID (any node error rolls back all DB writes).
-Asynchronous: the caller gets a task handle instead of blocking and retrieves the result
-  later — the flow still computes and returns its declared output; only the failing node's
-  DB writes roll back; required for AI agents and video generation.
+Synchronous: caller blocks for the result; ACID (any node error rolls back all DB writes). Asynchronous: the caller gets a task handle instead of blocking and retrieves the result later — the flow still computes and returns its declared output; only the failing node's DB writes roll back; required for AI agents and video generation.
 
-Both modes share a per-flow total timeout (`ACTION_FLOW_TIMEOUT_MILLISECONDS`): 15 s on
-free-tier servers, 10 min on paid tiers. The budget is for the entire flow, not per node.
+Both modes share a per-flow total timeout (`ACTION_FLOW_TIMEOUT_MILLISECONDS`): 15 s on free-tier servers, 10 min on paid tiers. The budget is for the entire flow, not per node.
 
 ### Triggers
 Manual (UI action), scheduled (cron), database-change event, webhook.
 
 ### Node Types
-Database: query/insert/update/delete on a table.
-Call API: invoke a configured API; bind response to output params.
-Run AI: execute a ZAI agent (async only).
-Run Actionflow: call another flow (sync cannot call async).
-Set Variable: assign values to declared flow-level variables.
-Current User: get current user's ID / Access Token.
-Permissions: grant or revoke roles for a user.
-Run Code: execute custom JavaScript.
-Files: fetch/convert external images/videos/files to Zion native types.
-Condition: branch logic evaluated left to right.
-Loop: iterate over a list; inner nodes access item data.
-Send SMS - Twilio: send SMS messages.
-Gemini Veo 3.1: generate 8-second video clips (async only).
+Database: query/insert/update/delete on a table. Call API: invoke a configured API; bind response to output params. Run AI: execute a ZAI agent (async only). Run Actionflow: call another flow (sync cannot call async). Set Variable: assign values to declared flow-level variables. Current User: get current user's ID / WeChat OpenID / Access Token. Permissions: grant or revoke roles for a user. Run Code: execute custom JavaScript. Files: fetch/convert external images/videos/files to Zion native types. Condition: branch logic evaluated left to right. Loop: iterate over a list; inner nodes access item data.
+
+Beyond these built-ins the editor also offers a server-managed catalog of **preset integration nodes** (the `TEMPLATE_CODE` node type — published templates such as SMS sending or video/AI generation). That catalog is dynamic and not part of this fixed node-type list, so never assume a specific provider exists: call `actionflow.list_node_templates` to get the current set (each template's `templateCodeId` plus its input/output types), then insert one with `actionflow.add_node` using the `TEMPLATE_CODE` node type and that `templateCodeId`.
 
 ### Choosing How to Express Logic: nodes → formulas → code
 Three tiers, in order of preference:
-1. **Visual nodes** for orchestration — query / branch / iterate / write / call (Database,
-   Condition, Loop, Set Variable, Call API, Run Actionflow). They take part in the flow's
-   transaction, surface individually in logs and the edit-time error collector, and stay
-   user-editable.
-2. **Formula bindings** for value-level computation. A node value — a Set Variable value, a
-   mutation column, a condition predicate — can be a FORMULA binding built with the bindings
-   plugin, and formulas cover far more than people expect: text and regex (extract / match /
-   replace, substring, split, concat), math, date/time arithmetic and formatting, array
-   aggregation / mapping / filtering, JSON value access, and type casts. Prefer a formula over
-   code whenever you are computing a single value.
-3. **Run Code** only for genuinely procedural logic that neither a node nor a formula operator
-   expresses — e.g. cryptographic hashing / signature building, multi-step algorithms with
-   intermediate state, or assembling / parsing a complex nested payload. Keep it small and fed
-   by node inputs; never collapse a whole flow into one Run Code node.
+1. **Visual nodes** for orchestration — query / branch / iterate / write / call (Database, Condition, Loop, Set Variable, Call API, Run Actionflow). They take part in the flow's transaction, surface individually in logs and the edit-time error collector, and stay user-editable.
+2. **Formula bindings** for value-level computation. A node value — a Set Variable value, a mutation column, a condition predicate — can be a FORMULA binding built with the bindings plugin, and formulas cover far more than people expect: text and regex (extract / match / replace, substring, split, concat), math, date/time arithmetic and formatting, array aggregation / mapping / filtering, JSON value access, and type casts. Prefer a formula over code whenever you are computing a single value.
+3. **Run Code** only for genuinely procedural logic that neither a node nor a formula operator expresses — e.g. cryptographic hashing / signature building, multi-step algorithms with intermediate state, or assembling / parsing a complex nested payload. Keep it small and fed by node inputs; never collapse a whole flow into one Run Code node.
 
 ### Variables
 Declared at flow level, accessible by all nodes, assigned with "Set Variable" node.
 
 ### Inputs & Outputs
-Inspect a flow first with `list_flows` / `get_flow_detail`. Declare typed
-**input params** with `add_input_params`; set each param's type to a value copied
-verbatim from `get_selectable_types` (never hand-build the type string).
+Inspect a flow first with `list_flows` / `get_flow_detail`. Declare typed **input params** with `add_input_params`; set each param's type to a value copied verbatim from `get_selectable_types` (never hand-build the type string).
 A flow returns a **set of named output fields**: add them with `add_output_fields`
 (one entry per field, each with its own type) and remove them with
 `delete_output_fields`.
 
 ### Building & Editing a Flow
-Create flows with `create_flows` (each seeds an empty FLOW_START → FLOW_END), then
-read node and structure ids from `get_flow_detail` before editing. Add a node after
-another with `add_node`, reorder with `move_node`, remove with
-`delete_nodes`, and branch a Condition node with `add_branch`. Edit a
-node's name or type-scalar config with `update_node`, but set its data bindings
-(values, conditions, data sources, mutation fields) with the bindings plugin at the node's
-schema path — never inline. Declare flow variables with `add_global_variables` and
-assign them in a Set Variable node with `add_variable_assignments`. A Run Code node's
-`args.<name>` slots are managed with `add_code_input` (rename/delete variants); fill
-the code body with `generate_code`.
-An update or delete Database node is seeded with an always-true filter that matches **every**
-row — narrow it with the bindings plugin's where conditions at the node's schema path before
-syncing, or the write hits the whole table.
+Create flows with `create_flows` (each seeds an empty FLOW_START → FLOW_END), then read node and structure ids from `get_flow_detail` before editing. Add a node after another with `add_node`, reorder with `move_node`, remove with `delete_nodes`, and branch a Condition node with `add_branch`. Edit a node's name or type-scalar config with `update_node`, but set its data bindings (values, conditions, data sources, mutation fields) with the bindings plugin at the node's schema path — never inline. Declare flow variables with `add_global_variables` and assign them in a Set Variable node with `add_variable_assignments`. A Run Code node's `args.<name>` slots are managed with `add_code_input` (rename/delete variants); fill the code body with `generate_code`. An update or delete Database node is seeded with an always-true filter that matches **every** row — narrow it with the bindings plugin's request filters before syncing, or the write hits the whole table.
 
 ### Error Handling
-Synchronous: all DB changes roll back on error.
-Asynchronous: only the failing node's DB changes roll back.
+Synchronous: all DB changes roll back on error. Asynchronous: only the failing node's DB changes roll back.
 
 ### Versioning
-Each save creates a new version. "Sync Backend" required after editing for changes to
-take effect in production.
+Each save creates a new version. "Sync Backend" required after editing for changes to take effect in production.
 
 ### JavaScript Sandbox (Run Code node)
-Custom Code Blocks run in a synchronous GraalJS server sandbox. No async/await,
-no require(), no browser APIs. All platform interactions go through the global
-`context` object:
-  context.getArg(key)                              — retrieve flow input
-  context.setReturn(key, val)                      — pass output to downstream nodes
-  context.runGql(query, variables, options)        — execute DB operations
-  context.callThirdPartyApi(apiId, params)         — invoke a configured REST API
-  context.callActionFlow(flowId, ver, args)        — run a sub-flow synchronously
-  context.createActionFlowTask(flowId, ver, args)  — trigger a sub-flow async
-  context.getSsoUserInfo()                         — get authenticated user profile
-  context.uploadMedia(url, headers)                — stream remote image to asset server
-  context.log(message)                             — emit to Log Service
+Custom Code Blocks run in a synchronous GraalJS server sandbox. No async/await, no require(), no browser APIs. All platform interactions go through the global `context` object: context.getArg(key)                              — retrieve flow input context.setReturn(key, val)                      — pass output to downstream nodes context.runGql(query, variables, options)        — execute DB operations context.callThirdPartyApi(apiId, params)         — invoke a configured REST API context.callActionFlow(flowId, ver, args)        — run a sub-flow synchronously context.createActionFlowTask(flowId, ver, args)  — trigger a sub-flow async context.getSsoUserInfo()                         — get authenticated user profile context.uploadMedia(url, headers)                — stream remote image to asset server context.log(message)                             — emit to Log Service
 
 ## How to drive it (CLI only)
 
@@ -119,12 +66,58 @@ Each call is applied immediately — any resulting CRDT patch is uploaded. Batch
 | Intent | `name` | Required `args` |
 |---|---|---|
 | List flows | `GET_ALL_ACTION_FLOW_INFOS` | — |
-| Flow detail (ids) | `GET_ACTION_FLOW_DETAIL` | `actionFlowId` |
+| Flow detail (nodes, ids) | `GET_ACTION_FLOW_DETAIL` | `actionFlowId` |
 | Selectable I/O types | `GET_ACTION_FLOW_SELECTABLE_TYPES` | — |
-| Add flows | `ADD_ACTION_FLOWS` | `items` |
+| Data/vars in scope at a node path | `GET_ACTION_FLOW_CONTEXT_INFO` | `schemaPath` |
+| Create flows | `ADD_ACTION_FLOWS` | `items` |
+| Update a flow (name/async/timeout) | `UPDATE_ACTION_FLOW` | `actionFlowId` |
+| Delete flows | `DELETE_ACTION_FLOWS` | `actionFlowIds` |
 | Add input params | `ADD_ACTION_FLOW_INPUT_PARAMS` | `actionFlowId`, `items` |
+| Update input params | `UPDATE_ACTION_FLOW_INPUT_PARAMS` | `actionFlowId`, `items` |
+| Delete input params | `DELETE_ACTION_FLOW_INPUT_PARAMS` | `actionFlowId`, `names` |
 | Add a node | `ADD_ACTION_FLOW_NODE` | `actionFlowId`, `afterNodeId`, `node` |
+| Update a node config | `UPDATE_ACTION_FLOW_NODE` | `actionFlowId`, `nodeId` |
+| Delete nodes | `DELETE_ACTION_FLOW_NODES` | `actionFlowId`, `nodeIds` |
+| Reorder a node | `MOVE_ACTION_FLOW_NODE` | `actionFlowId`, `afterNodeId`, `nodeId` |
+| Add a branch (Condition node) | `ADD_ACTION_FLOW_BRANCH_ITEM` | `actionFlowId`, `branchSeparationId` |
+| Declare flow variables | `ADD_ACTION_FLOW_GLOBAL_VARIABLES` | `actionFlowId`, `items` |
+| Update flow variables | `UPDATE_ACTION_FLOW_GLOBAL_VARIABLES` | `actionFlowId`, `items` |
+| Delete flow variables | `DELETE_ACTION_FLOW_GLOBAL_VARIABLES` | `actionFlowId`, `variableKeys` |
+| Assign Set-Variable node targets | `ADD_GLOBAL_VARIABLES_NODE_TARGETS` | `actionFlowId`, `nodeId`, `variableKeys` |
+| Remove Set-Variable node targets | `DELETE_GLOBAL_VARIABLES_NODE_TARGETS` | `actionFlowId`, `nodeId`, `variableKeys` |
+| Add a Run Code input | `ADD_CUSTOM_CODE_NODE_INPUT` | `actionFlowId`, `name`, `nodeId` |
+| Rename a Run Code input | `RENAME_CUSTOM_CODE_NODE_INPUT` | `actionFlowId`, `newName`, `nodeId`, `oldName` |
+| Delete a Run Code input | `DELETE_CUSTOM_CODE_NODE_INPUT` | `actionFlowId`, `name`, `nodeId` |
+| Set a Run Code output type | `SET_CUSTOM_CODE_NODE_OUTPUT_TYPE` | `actionFlowId`, `nodeId`, `type` |
+| Clear a Run Code output type | `CLEAR_CUSTOM_CODE_NODE_OUTPUT_TYPE` | `actionFlowId`, `nodeId` |
+| Add a Run Code output value | `ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE` | `actionFlowId`, `name`, `nodeId`, `type` |
+| Update a Run Code output value | `UPDATE_CUSTOM_CODE_NODE_OUTPUT_VALUE` | `actionFlowId`, `name`, `nodeId` |
+| Delete a Run Code output value | `DELETE_CUSTOM_CODE_NODE_OUTPUT_VALUE` | `actionFlowId`, `name`, `nodeId` |
+| Rename a node/slot (by path) | `SET_DISPLAY_NAME` | `displayName`, `schemaPath` |
 | Add output fields | `ADD_ACTION_FLOW_OUTPUT_FIELDS` | `actionFlowId`, `items` |
+| Delete output fields | `DELETE_ACTION_FLOW_OUTPUT_FIELDS` | `actionFlowId`, `names` |
+
+### Trigger operations
+
+| Intent | `name` | Required `args` |
+|---|---|---|
+| List DB triggers | `GET_ALL_DB_TRIGGER_INFOS` | — |
+| DB trigger detail | `GET_DB_TRIGGER_DETAIL` | `triggerId` |
+| Add DB triggers | `ADD_DB_TRIGGERS` | `items` |
+| Update a DB trigger | `UPDATE_DB_TRIGGER` | `triggerId` |
+| Delete DB triggers | `DELETE_DB_TRIGGERS` | `triggerIds` |
+| List scheduled triggers | `GET_ALL_SCHEDULED_TRIGGER_INFOS` | — |
+| Scheduled trigger detail | `GET_SCHEDULED_TRIGGER_DETAIL` | `triggerId` |
+| Add scheduled triggers | `ADD_SCHEDULED_TRIGGERS` | `items` |
+| Update a scheduled trigger | `UPDATE_SCHEDULED_TRIGGER` | `triggerId` |
+| Delete scheduled triggers | `DELETE_SCHEDULED_TRIGGERS` | `triggerIds` |
+
+Triggers fire an action flow without a manual call: a **DB trigger** fires on a table
+INSERT/UPDATE/DELETE (`dbOperationType`), a **scheduled trigger** fires on a Quartz `cron`
+expression. Both seed the target flow's input params as empty bindings — fill them via
+`data-binding.md` at the schema paths from `GET_DB_TRIGGER_DETAIL` / `GET_SCHEDULED_TRIGGER_DETAIL`.
+A DB trigger's firing condition (which rows it applies to) is edited with the request-filter ops at
+its condition schema path; changing `dbOperationType` or the watched table resets it to always-true.
 
 ## Node configuration
 
@@ -137,11 +130,16 @@ per-`type` body for each is the discriminated union under `node` / `config` in *
 
 Block nodes (branch / for-each / while) auto-create their end + initial contents; deleting a
 block-start deletes the whole block. A DB node seeds its editable columns as empty bindings — fill
-each value at the node's `schemaPath` per `data-binding.md`, and add query `where` / gating
-conditions with the request-filter ops there. An insert / update node must bind **at least one** column: a mutation node with no bound
+each value at the node's `schemaPath` per `data-binding.md`, and narrow its rows with the request-filter
+ops there. Those ops edit a request's `filters` (the live where/sort model) and work the same on a query
+node and an update / delete node. An insert / update node must bind **at least one** column: a mutation node with no bound
 field fails `schema validate` with "Mutation updates at least one field". Input-param and
 output-field **types** are copied
 verbatim from `GET_ACTION_FLOW_SELECTABLE_TYPES` — never hand-built.
+
+**An update / delete record node ships with an always-true default filter, so it matches every row until you
+narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FILTER_CONTEXT` →
+`ADD_REQUEST_FILTER_CONDITION`) on the node's filters before syncing, or the write hits the whole table.
 
 > Output on **pre-refactor** projects uses `ADD_ACTION_FLOW_OUTPUT_FIELDS` / `DELETE_ACTION_FLOW_OUTPUT_FIELDS`. On post-refactor projects use `SET_ACTION_FLOW_OUTPUT` instead.
 
@@ -153,22 +151,147 @@ AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTI
 
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
 
+### `GET_ACTION_FLOW_DETAIL`
+- `actionFlowId` *(required)*: `string` — The unique id of the action flow to inspect.
+
+### `GET_ACTION_FLOW_CONTEXT_INFO`
+- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+
 ### `ADD_ACTION_FLOWS`
 - `items` *(required)*: `array<{displayName: string, isAsync?: boolean, timeout?: integer}>` — Action flows to create. Each is seeded with an empty body (a FLOW_START connected directly to a FLOW_END); add nodes afterwards with ADD_ACTION_FLOW_NODE.
+
+### `UPDATE_ACTION_FLOW`
+- `actionFlowId` *(required)*: `string` — The unique id of the action flow to update.
+- `displayName`: `string`
+- `isAsync`: `boolean` — Whether the flow runs asynchronously (fire-and-forget).
+- `timeout`: `integer` — Execution timeout in seconds.
+- `useEventLoop`: `boolean`
+
+### `DELETE_ACTION_FLOWS`
+- `actionFlowIds` *(required)*: `array<string>` — The unique ids of the action flows to delete.
 
 ### `ADD_ACTION_FLOW_INPUT_PARAMS`
 - `actionFlowId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, name: string, type?: string}>`
 
+### `UPDATE_ACTION_FLOW_INPUT_PARAMS`
+- `actionFlowId` *(required)*: `string`
+- `items` *(required)*: `array<{arrayLevel?: integer, name: string, newName?: string, type?: string}>`
+
+### `DELETE_ACTION_FLOW_INPUT_PARAMS`
+- `actionFlowId` *(required)*: `string`
+- `names` *(required)*: `array<string>` — Names (keys) of the input parameters to delete.
+
 ### `ADD_ACTION_FLOW_NODE`
 - `actionFlowId` *(required)*: `string`
 - `afterNodeId` *(required)*: `string` — Insert the new node immediately after this node (its uniqueId).
 - `displayName`: `string` — Optional display name; defaults to the localized node-type name.
-- `node` *(required)*: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | BRANCH_SEPARATION → {branchNames?: array<string>, conditionType?: enum(MUTUAL_EXCLUSION|MUTUAL_TOLERANCE)} | BREAK → {} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | FOR_EACH_START → {} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {tableDisplayName?: string} | QUERY_RECORD → {limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId: string} | THIRD_PARTY_API → {} | UPDATE_GLOBAL_VARIABLES → {} | WHILE_START → {}`
+- `node` *(required)*: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | BRANCH_SEPARATION → {branchNames?: array<string>, conditionType?: enum(MUTUAL_EXCLUSION|MUTUAL_TOLERANCE)} | BREAK → {} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | FOR_EACH_START → {} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {tableDisplayName?: string} | QUERY_RECORD → {limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId: string} | THIRD_PARTY_API → {thirdPartyApiId?: string} | UPDATE_GLOBAL_VARIABLES → {} | WHILE_START → {}`
+
+### `UPDATE_ACTION_FLOW_NODE`
+- `actionFlowId` *(required)*: `string`
+- `config`: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | BRANCH_SEPARATION → {conditionType?: enum(MUTUAL_EXCLUSION|MUTUAL_TOLERANCE)} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {tableDisplayName?: string} | QUERY_RECORD → {limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId?: string} | THIRD_PARTY_API → {operation?: string, thirdPartyApiId?: string}` — Node-type-specific scalar config to update. Its `type` must match the node's actual type; fields left null are unchanged. Only non-data-binding scalars are editable here — data-binding config (mutation set values, conditions, dataSource, input args, target account, AI message) is edited with the data-binding tools at the node's schema path, and a query/mutation's where/sort (now held in `filters`) is not editable here yet.
+- `displayName`: `string` — New display name; applies to any node type.
+- `nodeId` *(required)*: `string` — The uniqueId of the node to update.
+
+### `DELETE_ACTION_FLOW_NODES`
+- `actionFlowId` *(required)*: `string`
+- `nodeIds` *(required)*: `array<string>` — uniqueIds of nodes to delete. A leaf node is removed on its own; passing a block start node (BRANCH_SEPARATION / FOR_EACH_START / WHILE_START) removes the entire block. The flow start/end and block boundary/branch-item nodes cannot be deleted directly.
+
+### `MOVE_ACTION_FLOW_NODE`
+- `actionFlowId` *(required)*: `string`
+- `afterNodeId` *(required)*: `string` — Move the node to immediately after this node (its uniqueId).
+- `nodeId` *(required)*: `string` — The uniqueId of the leaf node to move.
+
+### `ADD_ACTION_FLOW_BRANCH_ITEM`
+- `actionFlowId` *(required)*: `string`
+- `branchSeparationId` *(required)*: `string` — The uniqueId of the BRANCH_SEPARATION to add a branch to.
+- `name`: `string` — Optional display name for the new branch.
+
+### `ADD_ACTION_FLOW_GLOBAL_VARIABLES`
+- `actionFlowId` *(required)*: `string`
+- `items` *(required)*: `array<{arrayLevel?: integer, displayName: string, type?: string}>`
+
+### `UPDATE_ACTION_FLOW_GLOBAL_VARIABLES`
+- `actionFlowId` *(required)*: `string`
+- `items` *(required)*: `array<{arrayLevel?: integer, displayName?: string, type?: string, variableKey: string}>`
+
+### `DELETE_ACTION_FLOW_GLOBAL_VARIABLES`
+- `actionFlowId` *(required)*: `string`
+- `variableKeys` *(required)*: `array<string>` — The map keys (ids) of the global variables to delete.
+
+### `ADD_GLOBAL_VARIABLES_NODE_TARGETS`
+- `actionFlowId` *(required)*: `string`
+- `nodeId` *(required)*: `string` — uniqueId of the UPDATE_GLOBAL_VARIABLES node.
+- `variableKeys` *(required)*: `array<string>` — Keys of the action-flow global variables this node should assign.
+
+### `ADD_CUSTOM_CODE_NODE_INPUT`
+- `actionFlowId` *(required)*: `string`
+- `name` *(required)*: `string` — Name (key) of the new input; must be unique within the node.
+- `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
+
+### `RENAME_CUSTOM_CODE_NODE_INPUT`
+- `actionFlowId` *(required)*: `string`
+- `newName` *(required)*: `string` — New input name; must be unique within the node.
+- `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
+- `oldName` *(required)*: `string` — Current input name.
+
+### `ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE`
+- `actionFlowId` *(required)*: `string`
+- `name` *(required)*: `string` — Name (key) of the new output; must be unique within the node.
+- `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
+- `type` *(required)*: `enum(BIGSERIAL|BIGINT|INTEGER|FLOAT8|DECIMAL|TIMESTAMPTZ|TIMETZ|DATE|INTERVAL|TEXT|… 19 total)` — The output's type. Legacy custom-code outputs support only primitive column types: TEXT, BIGINT, DECIMAL, BOOLEAN, DATE, TIMETZ, TIMESTAMPTZ, IMAGE, VIDEO, FILE, GEO_POINT, JSONB (no arrays / tables / custom types).
+
+### `SET_CUSTOM_CODE_NODE_OUTPUT_TYPE`
+- `actionFlowId` *(required)*: `string`
+- `arrayLevel`: `integer` — Array nesting level for [type] (1 = list, 2 = list of lists); omit/0 for a scalar.
+- `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
+- `type` *(required)*: `string` — Output type: a TypeIdentifier selected from GET_ACTION_FLOW_SELECTABLE_TYPES (pass its `typeIdentifier` verbatim — never hand-build it).
+
+### `SET_DISPLAY_NAME`
+- `displayName` *(required)*: `string` — The suggested display name for the target.
+- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The specific schema path in the project where the display name should be set.
+
+### `GET_DB_TRIGGER_DETAIL`
+- `triggerId` *(required)*: `string` — The uniqueId of the database trigger to inspect.
+
+### `ADD_DB_TRIGGERS`
+- `items` *(required)*: `array<{actionFlowId: string, dbOperationType?: enum(INSERT|UPDATE|INSERT_OR_UPDATE|DELETE), displayName?: string, enabled?: boolean, tableDisplayName: string}>` — Database triggers to create. Each fires its action flow on the chosen table operation, with the flow's input args seeded as empty bindings (fill them via the data-binding tools at the schema paths from GET_DB_TRIGGER_DETAIL) and an always-true firing condition (edit it via the condition tools at the condition schema path from GET_DB_TRIGGER_DETAIL).
+
+### `UPDATE_DB_TRIGGER`
+- `dbOperationType`: `enum(INSERT|UPDATE|INSERT_OR_UPDATE|DELETE)` — Which database operation fires the trigger: INSERT, UPDATE, DELETE or INSERT_OR_UPDATE. Changing it resets the firing condition to always-true.
+- `displayName`: `string` — New display name.
+- `enabled`: `boolean` — Whether the trigger is enabled.
+- `tableDisplayName`: `string` — Display name of the table the trigger watches. Changing the table resets the firing condition to always-true (it references the table's columns).
+- `triggerId` *(required)*: `string` — The uniqueId of the database trigger to update.
+
+### `DELETE_DB_TRIGGERS`
+- `triggerIds` *(required)*: `array<string>` — The uniqueIds of the database triggers to delete.
+
+### `GET_SCHEDULED_TRIGGER_DETAIL`
+- `triggerId` *(required)*: `string` — The uniqueId of the scheduled trigger to inspect.
+
+### `ADD_SCHEDULED_TRIGGERS`
+- `items` *(required)*: `array<{actionFlowId: string, cron?: string, enabled?: boolean, endInstant?: integer, name?: string, startInstant?: integer}>` — Scheduled triggers to create. Each fires its action flow on a cron schedule, with the flow's input args seeded as empty bindings (fill them via the data-binding tools at the schema paths from GET_SCHEDULED_TRIGGER_DETAIL).
+
+### `UPDATE_SCHEDULED_TRIGGER`
+- `cron`: `string` — New Quartz cron expression (6 fields: second minute hour day-of-month month day-of-week).
+- `enabled`: `boolean` — Whether the trigger is enabled.
+- `endInstant`: `integer` — New epoch-millisecond end timestamp.
+- `name`: `string` — New display name.
+- `startInstant`: `integer` — New epoch-millisecond start timestamp.
+- `triggerId` *(required)*: `string` — The uniqueId of the scheduled trigger to update.
+
+### `DELETE_SCHEDULED_TRIGGERS`
+- `triggerIds` *(required)*: `array<string>` — The uniqueIds of the scheduled triggers to delete.
 
 ### `ADD_ACTION_FLOW_OUTPUT_FIELDS`
 - `actionFlowId` *(required)*: `string`
 - `items` *(required)*: `array<{name: string, type?: enum(BIGSERIAL|BIGINT|INTEGER|FLOAT8|DECIMAL|TIMESTAMPTZ|TIMETZ|DATE|INTERVAL|TEXT|… 19 total)}>`
+
+### `DELETE_ACTION_FLOW_OUTPUT_FIELDS`
+- `actionFlowId` *(required)*: `string`
+- `names` *(required)*: `array<string>` — Keys of the output fields to delete.
 
 Then ship:
 

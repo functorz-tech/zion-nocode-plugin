@@ -4,18 +4,10 @@
 Zion provides a runtime log service showing server-side execution traces.
 
 ### Log Types
-GATEWAY, ACTION_FLOW, ACTION_FLOW_NODE, ACTION_FLOW_CONTEXT_LOG, DEPLOYMENT,
-TPA, TRIGGER, SQL_GENERATION, GQL, ZAI.
-Search logs using customQueryCondition (Elasticsearch syntax), e.g.:
-'traceId: "abc-123"' or 'message.request.operationName: "MyOp"'.
+GATEWAY, ACTION_FLOW, ACTION_FLOW_NODE, ACTION_FLOW_CONTEXT_LOG, DEPLOYMENT, TPA, TRIGGER, SQL_GENERATION, GQL, ZAI. Search logs using customQueryCondition (Elasticsearch syntax), e.g.: 'traceId: "abc-123"' or 'message.request.operationName: "MyOp"'.
 
 ### Interpreting Logs
-ACTION_FLOW / ACTION_FLOW_NODE errors: misconfigured nodes (wrong field names, type mismatches).
-GATEWAY errors: API or authentication issues.
-SQL_GENERATION: data model or query configuration problems.
-GQL: GraphQL schema or permission issues.
-Translate technical errors into plain language. Distinguish configuration errors from platform bugs.
-Never expose sensitive fields (token, account_id) in responses.
+ACTION_FLOW / ACTION_FLOW_NODE errors: misconfigured nodes (wrong field names, type mismatches). GATEWAY errors: API or authentication issues. SQL_GENERATION: data model or query configuration problems. GQL: GraphQL schema or permission issues. Translate technical errors into plain language. Distinguish configuration errors from platform bugs. Never expose sensitive fields (token, account_id) in responses.
 
 ### Time Window
 Logs fetched in a ±5-minute window around requestCreatedAt (defaults to now).

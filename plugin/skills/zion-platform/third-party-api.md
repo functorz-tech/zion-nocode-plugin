@@ -10,13 +10,13 @@ A Third-Party API config is a saved external REST endpoint the project can call 
 - **Paging** (optional): pagination config for list endpoints.
 
 ### Data types
-TPA fields use the TPA type set, independent of the project's type-system setting: TEXT, INTEGER, BIGINT, FLOAT8, DECIMAL, BOOLEAN, IMAGE, OBJECT, ARRAY. For an ARRAY give its `itemType`; for an OBJECT or ARRAY add the field shape with the `add_parameter_children` / `add_response_data_children` tools.
+TPA fields use the TPA type set, independent of the project's type-system setting: TEXT, INTEGER, BIGINT, FLOAT8, DECIMAL, BOOLEAN, IMAGE, OBJECT, ARRAY. For an ARRAY give its `itemType`; for an OBJECT or ARRAY add the field shape with the `ADD_TPA_PARAMETER_CHILDREN` / `ADD_TPA_RESPONSE_DATA_CHILDREN` tools.
 
 ### Workflow
-List configs with `list_configs`, then `get_config_detail` to read a config's parameter and response `uniqueId`s — you pass these ids to the child tools. Create endpoints with `create_configs`; add request inputs with `add_parameters` (and `add_parameter_children` for object/array fields). Describe each response branch with `set_response_data`, then `add_response_data_children` for nested fields. Configure list pagination with `set_paging`. Editing a config creates a new version; "Sync Backend" is required for changes to take effect in production.
+List configs with `GET_ALL_TPA_CONFIG_INFOS`, then `GET_TPA_CONFIG_DETAIL` to read a config's parameter and response `uniqueId`s — you pass these ids to the child tools. Create endpoints with `ADD_TPA_CONFIGS`; add request inputs with `ADD_TPA_CONFIG_PARAMETERS` (and `ADD_TPA_PARAMETER_CHILDREN` for object/array fields). Describe each response branch with `ADD_TPA_RESPONSE_DATA`, then `ADD_TPA_RESPONSE_DATA_CHILDREN` for nested fields. Configure list pagination with `SET_TPA_CONFIG_PAGING`. Editing a config creates a new version; "Sync Backend" is required for changes to take effect in production.
 
 ### Importing from an OpenAPI / Swagger spec
-To onboard an existing API, prefer `import_from_openapi` over hand-building configs: pass the spec as a `url` (fetched server-side; internal/private addresses are blocked) or paste it as `specText` (JSON or YAML). It creates each operation as a full TPA endpoint — parameters, body, and success/fail response shape — in one call, capped at 25 endpoints (use `pathsFilter` to scope larger specs); a failed import is rolled back. If the spec declares no absolute server URL the imported configs get relative urls — fix each with `update_config` using the base URL from the documentation. When you only have a human-readable docs page, `fetch_doc` retrieves it (SSRF-guarded) and lets you explore the documentation iteratively: follow the returned same-site `pageLinks`, keep reading long pages with `offset`, and watch `specLinks` for a machine-readable spec to import — all within a 15-fetch session budget. If no spec exists, author the configs with the granular tools above from what you read.
+To onboard an existing API, prefer `import_from_openapi` over hand-building configs: pass the spec as a `url` (fetched server-side; internal/private addresses are blocked) or paste it as `specText` (JSON or YAML). It creates each operation as a full TPA endpoint — parameters, body, and success/fail response shape — in one call, capped at 25 endpoints (use `pathsFilter` to scope larger specs); a failed import is rolled back. If the spec declares no absolute server URL the imported configs get relative urls — fix each with `UPDATE_TPA_CONFIG` using the base URL from the documentation. When you only have a human-readable docs page, `fetch_doc` retrieves it (SSRF-guarded) and lets you explore the documentation iteratively: follow the returned same-site `pageLinks`, keep reading long pages with `offset`, and watch `specLinks` for a machine-readable spec to import — all within a 15-fetch session budget. If no spec exists, author the configs with the granular tools above from what you read.
 
 ## How to drive it (CLI only)
 
@@ -69,9 +69,13 @@ fields are built with the `*_CHILDREN` / `*_CHILD` ops against a `parentUniqueId
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
 
 ### `ADD_TPA_CONFIGS`
+
+Create one or more API endpoints (name, url, HTTP method, query/mutation operation). Each is seeded with empty parameters and response branches; add those afterwards.
 - `items` *(required)*: `array<{method: enum(GET|POST|PUT|DELETE), name: string, operation: enum(QUERY|MUTATION), url: string}>`
 
 ### `UPDATE_TPA_CONFIG`
+
+Update an endpoint's scalar config: name, url, description, method, operation, request content type, or CA certificate.
 - `caX509PemBase64`: `string`
 - `description`: `string`
 - `method`: `enum(GET|POST|PUT|DELETE)`
@@ -82,10 +86,14 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `url`: `string`
 
 ### `ADD_TPA_CONFIG_PARAMETERS`
+
+Add request parameters to a config. `items` maps each position (QUERY/PATH/HEADER/BODY) to exactly ONE parameter object — to add several parameters, call this tool once per parameter. Each carries a TPA data type; for OBJECT/ARRAY add the shape with ADD_TPA_PARAMETER_CHILDREN.
 - `items` *(required)*: `map<enum(BODY|HEADER|QUERY|PATH), {defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}>`
 - `tpaConfigId` *(required)*: `string`
 
 ### `UPDATE_TPA_CONFIG_PARAMETER`
+
+Update a top-level request parameter (name, type, itemType, required, default value). Read the parameter uniqueId from GET_TPA_CONFIG_DETAIL.
 - `defaultValue`: `string`
 - `itemType`: `string`
 - `name`: `string`
@@ -95,11 +103,15 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `type`: `string`
 
 ### `ADD_TPA_RESPONSE_DATA`
+
+Set the root response-data shape for one response branch (SUCCESS / PERMANENT_FAIL / TEMPORARY_FAIL). Add nested fields afterwards with ADD_TPA_RESPONSE_DATA_CHILDREN.
 - `responseBranch` *(required)*: `enum(SUCCESS|PERMANENT_FAIL|TEMPORARY_FAIL)`
 - `responseData` *(required)*: `{defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}`
 - `tpaConfigId` *(required)*: `string`
 
 ### `UPDATE_TPA_RESPONSE_DATA`
+
+Update the root response-data node of a branch (name, type, itemType, required, default value).
 - `defaultValue`: `string`
 - `itemType`: `string`
 - `name`: `string`
@@ -109,6 +121,8 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `type`: `string`
 
 ### `SET_TPA_CONFIG_PAGING`
+
+Configure (or clear) pagination for a list endpoint.
 - `pageIndexPath`: `array<string>`
 - `pageIndexStartValue`: `integer`
 - `pageSizePath`: `array<string>`

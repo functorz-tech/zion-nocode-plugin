@@ -73,7 +73,7 @@ The plugin runs `zion-mcp` through `npx`, so **Node.js 18+** is required. On fir
 asked to authenticate; you can also do it ahead of time:
 
 ```bash
-npx -y zion-mcp login
+npx -y zion-mcp@latest login
 ```
 
 Then ask your assistant to work on your Zion app — it loads the `zion-platform` skill and takes

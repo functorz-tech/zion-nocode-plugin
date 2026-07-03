@@ -215,6 +215,12 @@ Each capability is a sibling file in this skill folder. When a task calls for on
 - **Permissions (RBAC + ABAC)** (`permissions.md`) — Design RBAC + ABAC access control and guide its setup. Use when the project involves multiple user groups, data isolation, restricted actions, 403 errors, or table/column/row permissions and relation-first tenant isolation.
 - **Payments (WeChat Pay / Alipay)** (`payments.md`) — Design and wire up payments and guide their setup. Use when the project involves checkout, orders, subscriptions, or refunds (covers order-table design, the auto-created payment Actionflows, the webhook idempotency contract, and secure order creation).
 - **Documentation search** (`docs.md`) — Load when you need general platform guidance, references, or specific step-by-step documentation to query the official Zion developer manual.
+- **BaaS runtime — data queries** (`baas-database.md`) — Query & mutate a DEPLOYED project's data over its auto-generated GraphQL API — root operations, the operator-first where grammar, aggregations, and app-user auth. Runtime counterpart to schema-table.
+- **BaaS runtime — formula functions** (`baas-formulas.md`) — The runtime GraphQL formula-function catalogue (100+ operand functions) and their enum values, used inside where / order_by operands. Distinct from data-binding UI operators.
+- **BaaS runtime — action-flow invocation** (`baas-actionflow.md`) — Invoke server-side action flows from the runtime GraphQL API — sync mutation vs async task + result subscription. Runtime counterpart to actionflow.
+- **BaaS runtime — AI agent invocation** (`baas-ai-agent.md`) — Invoke ZAI AI agents from the runtime GraphQL API — create a conversation, stream / structured results, continue / stop. Runtime counterpart to ai-agent.
+- **BaaS runtime — binary asset upload** (`baas-assets.md`) — Upload binary assets (image / video / file) to a deployed project via the mandatory presigned-URL + MD5 two-step, then reference them by id.
+- **BaaS runtime — third-party API invocation** (`baas-third-party-api.md`) — Invoke a project's imported third-party HTTP APIs from the runtime GraphQL API (operation_<id>, response branching). Runtime counterpart to third-party-api.
 
 ## Driving a project from the CLI
 

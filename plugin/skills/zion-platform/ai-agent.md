@@ -4,13 +4,13 @@
 A ZAI config is an LLM-backed agent the app runs via a "Run AI" action / action-flow node (asynchronous only). An agent has a name + description, a model, sampling settings (temperature, maxRound, max output tokens), a system + user **prompt**, and its **output**.
 
 ### Reading
-`list_configs` summarizes every agent; `get_config_detail` returns one agent's full config — its input args (with their map keys), its prompt components each with the **schema path** of its text binding, and its output config.
+`GET_ALL_ZAI_CONFIG_INFOS` summarizes every agent; `GET_ZAI_CONFIG_DETAIL` returns one agent's full config — its input args (with their map keys), its prompt components each with the **schema path** of its text binding, and its output config.
 
 ### Creating & editing
-`create_configs` seeds an agent with default empty system + user prompts and plain-text output; adding the first agent also provisions the AI conversation tables/relations/permissions. Edit scalar config (name, description, temperature, maxRound) with `update_config`. The **model** is also set via `update_config` — pass `customModelIdentifier` ({id, namespace}) with an id from the platform's supported-model descriptor (`supportedCustomModelDescriptor.chatModelDescriptors`, which lists each model's exact identifier and features such as vision / file support). Never fabricate an id; if you cannot obtain one, leave the model unset for the user to pick in the editor.
+`ADD_ZAI_CONFIGS` seeds an agent with default empty system + user prompts and plain-text output; adding the first agent also provisions the AI conversation tables/relations/permissions. Edit scalar config (name, description, temperature, maxRound) with `UPDATE_ZAI_CONFIG`. The **model** is also set via `UPDATE_ZAI_CONFIG` — pass `customModelIdentifier` ({id, namespace}) with an id from the platform's supported-model descriptor (`supportedCustomModelDescriptor.chatModelDescriptors`, which lists each model's exact identifier and features such as vision / file support). Never fabricate an id; if you cannot obtain one, leave the model unset for the user to pick in the editor.
 
 ### Prompts are bindings, not a ZAI tool
-A prompt's text is an ordinary data binding. Read its `valueSchemaPath` from `get_config_detail` and edit it with the bindings plugin (the CREATE_*_BINDING tools) at that path — there is no ZAI prompt-edit tool.
+A prompt's text is an ordinary data binding. Read its `valueSchemaPath` from `GET_ZAI_CONFIG_DETAIL` and edit it with the bindings plugin (the CREATE_*_BINDING tools) at that path — there is no ZAI prompt-edit tool.
 
 ### System AI conversation tables
 Creating the first agent provisions four protected system tables that store agent runs. They are platform-managed (read-only — never add fields to or edit them; for a user-facing chat feature build your own tables instead). Their individual roles, in a 1:n chain:
@@ -22,7 +22,7 @@ Creating the first agent provisions four protected system tables that store agen
 ### Typed input args & output
 
 **Input args**: each input arg's `type` must be one of these scalar types — this is the complete
-set (copy the matching `typeIdentifier` from `get_selectable_types`; never hand-build it):
+set (copy the matching `typeIdentifier` from `GET_ZAI_CONFIG_SELECTABLE_TYPES`; never hand-build it):
 - text (string)
 - integer
 - decimal
@@ -108,9 +108,13 @@ Copy an `id` (with its `namespace`) back verbatim — never fabricate one — th
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
 
 ### `ADD_ZAI_CONFIGS`
+
+Create one or more AI agents. Each is seeded with default empty system + user prompts, no input args, and plain-text output; edit prompt text afterwards with the bindings plugin at the schema paths from GET_ZAI_CONFIG_DETAIL.
 - `items` *(required)*: `array<{customModelIdentifier?: object, name?: string}>` — AI agents to create. Each is seeded with the default system + user prompt components (empty text bindings, edit them via the data-binding tools at the schema paths from GET_ZAI_CONFIG_DETAIL), an empty input-arg set and a plain-text output config. Adding the first agent also provisions the AI conversation tables/relations/permissions if absent.
 
 ### `UPDATE_ZAI_CONFIG`
+
+Update an agent's scalar config: name, description, temperature, maxRound, or model.
 - `configId` *(required)*: `string` — The id of the AI agent to update.
 - `customModelIdentifier`: `{id: string, namespace?: string}` — Model to use: the full model identifier ({ id, namespace }) as returned by the model-listing interface — pass it verbatim, never hand-build it. The deprecated `model` field is never written; selecting a model goes through this identifier.
 - `description`: `string` — New description.
@@ -121,10 +125,14 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `temperature`: `number` — Sampling temperature.
 
 ### `ADD_ZAI_CONFIG_INPUT_ARGS`
+
+Add typed input arguments to an agent. Each arg's type is a typeIdentifier copied from GET_ZAI_CONFIG_SELECTABLE_TYPES. Works in both type-system modes: the refactored system allows arrays (arrayLevel), tables, and custom types; the legacy system accepts basic scalars only (no arrayLevel/arrays, tables, or objects).
 - `configId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, displayName: string, type?: string}>`
 
 ### `UPDATE_ZAI_CONFIG_OUTPUT`
+
+Configure the agent's output: plain streamed text (isStructured=false) or a structured typed object (isStructured=true with an outputType copied from GET_ZAI_CONFIG_SELECTABLE_TYPES).
 - `configId` *(required)*: `string` — The id of the AI agent whose output config to update.
 - `isStreaming`: `boolean` — Whether the plain-text output streams. Only meaningful when not structured.
 - `isStructured`: `boolean` — Whether the agent emits a structured (typed) output (true) or plain text (false). Switching to structured seeds `outputType` to string when none is given; switching to plain text drops the output type.

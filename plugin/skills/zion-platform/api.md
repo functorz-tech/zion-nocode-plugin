@@ -8,7 +8,7 @@ An API integration is a saved external HTTP endpoint the project can use as a da
 - **API**: an HTTP `method` + URL under a workspace, with request **parameters** (path / query / header / body), typed **response configs** (the result shape downstream binds from), and declared **input variables** (the values a caller supplies).
 
 ### Workflow
-List with `list_workspaces` / `list_apis`, then `get_detail` to read an API's `apiId`, `workspaceId`, and parameter / response `uniqueId`s before editing — never fabricate them. Build top-down: `create_workspaces` → `add_workspace_constants` (put API keys / base URLs here, never inline) → `create_apis` (each under a `workspaceId`) → `add_parameters`, `add_response_configs`, `add_input_variables`. Editing creates a new version; "Sync Backend" is required for changes to take effect in production.
+List with `GET_ALL_API_WORKSPACES` / `GET_ALL_API_INFOS`, then `GET_API_DETAIL` to read an API's `apiId`, `workspaceId`, and parameter / response `uniqueId`s before editing — never fabricate them. Build top-down: `ADD_API_WORKSPACES` → `ADD_API_WORKSPACE_CONSTANTS` (put API keys / base URLs here, never inline) → `ADD_APIS` (each under a `workspaceId`) → `ADD_API_PARAMETERS`, `ADD_API_RESPONSE_CONFIGS`, `ADD_API_INPUT_VARIABLES`. Editing creates a new version; "Sync Backend" is required for changes to take effect in production.
 
 ## How to drive it (CLI only)
 
@@ -61,16 +61,24 @@ Build top-down: `ADD_API_WORKSPACES` → `ADD_API_WORKSPACE_CONSTANTS` (API keys
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
 
 ### `ADD_API_WORKSPACES`
+
+Create one or more API workspaces (name + description). Add their constants and APIs afterwards.
 - `items` *(required)*: `array<{description?: string, displayName: string}>`
 
 ### `ADD_API_WORKSPACE_CONSTANTS`
+
+Add shared constants (base URLs, API keys, tokens) to a workspace; its APIs reference them instead of inlining secrets.
 - `items` *(required)*: `array<{name: string, type: string}>`
 - `workspaceId` *(required)*: `string`
 
 ### `ADD_APIS`
+
+Create one or more API endpoints (name, HTTP method, URL) under a workspaceId. Each is seeded with empty parameters / responses; add those afterwards.
 - `items` *(required)*: `array<{displayName: string, inputVariables?: array<object>, method: enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD), pagination?: object, responseConfigs?: array<object>, url: string, useAsData?: boolean, workspaceId: string}>`
 
 ### `UPDATE_API`
+
+Update an endpoint's scalar config: name, method, URL, content type, or whether it is usable as data. Read the apiId from GET_ALL_API_INFOS.
 - `apiId` *(required)*: `string`
 - `displayName`: `string`
 - `method`: `enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)`
@@ -79,14 +87,20 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `useAsData`: `boolean`
 
 ### `ADD_API_PARAMETERS`
+
+Add request parameters to an API. Each carries a position (path / query / header / body) and a type.
 - `apiId` *(required)*: `string`
 - `items` *(required)*: `array<object>`
 
 ### `ADD_API_RESPONSE_CONFIGS`
+
+Add typed response configs to an API — the shape of the JSON it returns, so downstream can bind to its fields.
 - `apiId` *(required)*: `string`
 - `items` *(required)*: `array<{isCustom?: boolean, name: string, responseType?: string, statusCode: array<string>}>`
 
 ### `ADD_API_INPUT_VARIABLES`
+
+Declare input variables on an API — the values a caller supplies, bindable into the URL / parameters.
 - `apiId` *(required)*: `string`
 - `items` *(required)*: `array<{displayName: string, type: string}>`
 

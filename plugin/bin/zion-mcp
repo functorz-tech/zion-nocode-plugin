@@ -7,7 +7,7 @@ function fail(error) {
 }
 
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-const child = spawn(npx, ['-y', 'zion-mcp@2.0.17', ...process.argv.slice(2)], {
+const child = spawn(npx, ['-y', 'zion-mcp@2.0.19', ...process.argv.slice(2)], {
   stdio: 'inherit',
 });
 child.on('error', fail);

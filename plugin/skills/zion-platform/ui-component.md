@@ -33,10 +33,10 @@ Phone: 0–767 px | Tablet: 768–1279 px | Desktop: 1280–1920 px. Primary bre
 
 ### Reading the Component Tree
 These read tools inspect the live component tree (component construction and editing are done in the editor, not here):
-- `list_pages` — display names of all pages in the project.
-- `get_component_info` — one component's type and config, by its component id.
-- `get_container_children` — the direct children of a container (or a special component's slot), by the container's id.
-- `get_component_context` — a component together with its ancestor chain and siblings, so you can see where it sits in the page.
+- `GET_ALL_PAGE_NAMES` — display names of all pages in the project.
+- `GET_COMPONENT_INFO` — one component's type and config, by its component id.
+- `GET_CONTAINER_CHILDREN_INFO` — the direct children of a container (or a special component's slot), by the container's id.
+- `GET_COMPONENT_CONTEXT_INFO` — a component together with its ancestor chain and siblings, so you can see where it sits in the page.
 
 ## How to drive it (CLI only)
 

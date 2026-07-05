@@ -16,7 +16,20 @@ TPA fields use the TPA type set, independent of the project's type-system settin
 List configs with `GET_ALL_TPA_CONFIG_INFOS`, then `GET_TPA_CONFIG_DETAIL` to read a config's parameter and response `uniqueId`s — you pass these ids to the child tools. Create endpoints with `ADD_TPA_CONFIGS`; add request inputs with `ADD_TPA_CONFIG_PARAMETERS` (and `ADD_TPA_PARAMETER_CHILDREN` for object/array fields). Describe each response branch with `ADD_TPA_RESPONSE_DATA`, then `ADD_TPA_RESPONSE_DATA_CHILDREN` for nested fields. Configure list pagination with `SET_TPA_CONFIG_PAGING`. Editing a config creates a new version; "Sync Backend" is required for changes to take effect in production.
 
 ### Importing from an OpenAPI / Swagger spec
-To onboard an existing API, prefer `import_from_openapi` over hand-building configs: pass the spec as a `url` (fetched server-side; internal/private addresses are blocked) or paste it as `specText` (JSON or YAML). It creates each operation as a full TPA endpoint — parameters, body, and success/fail response shape — in one call, capped at 25 endpoints (use `pathsFilter` to scope larger specs); a failed import is rolled back. If the spec declares no absolute server URL the imported configs get relative urls — fix each with `UPDATE_TPA_CONFIG` using the base URL from the documentation. When you only have a human-readable docs page, `fetch_doc` retrieves it (SSRF-guarded) and lets you explore the documentation iteratively: follow the returned same-site `pageLinks`, keep reading long pages with `offset`, and watch `specLinks` for a machine-readable spec to import — all within a 15-fetch session budget. If no spec exists, author the configs with the granular tools above from what you read.
+To onboard an existing API, prefer `tpa import-from-openapi` over hand-building configs: pass the spec as a `url` (fetched server-side; internal/private addresses are blocked) or paste it as `specText` (JSON or YAML). It creates each operation as a full TPA endpoint — parameters, body, and success/fail response shape — in one call, capped at 25 endpoints (use `pathsFilter` to scope larger specs); a failed import is rolled back. If the spec declares no absolute server URL the imported configs get relative urls — fix each with `UPDATE_TPA_CONFIG` using the base URL from the documentation. When you only have a human-readable docs page, `tpa fetch-doc` retrieves it (SSRF-guarded) and lets you explore the documentation iteratively: follow the returned same-site `pageLinks`, keep reading long pages with `offset`, and watch `specLinks` for a machine-readable spec to import — all within a 15-fetch session budget. If no spec exists, author the configs with the granular tools above from what you read.
+
+> TPA works on every project generation (pre- and post-type-system-refactor) — it is the right integration surface when the post-only API-integration workspaces are unavailable.
+
+## Importing from docs / OpenAPI (CLI)
+
+The import tools described above are CLI verbs here — prefer them over hand-building configs:
+
+```bash
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" tpa fetch-doc --url "https://api.example.com/docs"          # read a docs page: Markdown content, same-site pageLinks, OpenAPI specLinks; --offset to keep reading
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" tpa import-from-openapi --url "https://api.example.com/openapi.json" --pathsFilter /users /orders   # spec URL (or --specText '<json|yaml>'); pathsFilter values are space-separated substrings
+```
+
+`import-from-openapi` creates each operation as a full TPA endpoint — parameters, body, response trees, paging — in one call (capped at 25; rolled back on failure) and reports the created `tpaConfigId`s. Scope with `--pathsFilter` FIRST (substring match on the spec's path keys) — importing a whole spec creates every endpoint, and pruning afterwards is a separate DELETE. After importing, cross-check the endpoint's parameters against the human docs (specs often lag; add missing ones with the granular ops). `fetch-doc` has a 15-fetch session budget; when no machine-readable spec exists, author the configs from what you read with the granular ops below: `ADD_TPA_CONFIGS` → `ADD_TPA_CONFIG_PARAMETERS` → `ADD_TPA_RESPONSE_DATA` (+ `*_CHILDREN` for nested fields).
 
 ## How to drive it (CLI only)
 
@@ -35,6 +48,7 @@ Operations run through one verb:
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
+A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
 
 ## Operation reference (`schema tool-call` names)
 
@@ -70,7 +84,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 ### `ADD_TPA_CONFIGS`
 
-Create one or more API endpoints (name, url, HTTP method, query/mutation operation). Each is seeded with empty parameters and response branches; add those afterwards.
+Create one or more API endpoints (name, url, HTTP method, query/mutation operation). Each is seeded with empty parameters and response branches; add those afterwards. Returns each created config's tpaConfigId — no need to list configs again to find it.
 - `items` *(required)*: `array<{method: enum(GET|POST|PUT|DELETE), name: string, operation: enum(QUERY|MUTATION), url: string}>`
 
 ### `UPDATE_TPA_CONFIG`

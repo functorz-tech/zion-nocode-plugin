@@ -1,12 +1,12 @@
-# zion-nocode — Claude Code、Codex 与 Cursor 套件
+# zion-nocode — Claude Code、Codex、Cursor 与 QoderWork 套件
 
 自动生成 — 请勿手动编辑。技能内容由 `build_scripts/gen-skills.mjs` 生成，
 使用 `node build_scripts/gen-skills.mjs` 重新生成。
 
 `zion-platform` 技能会引导 Claude Code、Codex 或 Cursor 构建 Zion 项目（类型系统重构前的组合包），
-并路由到各能力子文档。同一组合包提供三份宿主清单 — `.claude-plugin/plugin.json`（Claude Code）、
-`.codex-plugin/plugin.json`（Codex）与 `.cursor-plugin/plugin.json`（Cursor） — 共享同一套
-`skills/`、`hooks/` 与 `bin/`。Cursor 还会使用 `mcp.json` 中声明的 `zion` MCP 服务器；
+并路由到各能力子文档。同一组合包提供四份宿主清单 — `.claude-plugin/plugin.json`（Claude Code）、
+`.codex-plugin/plugin.json`（Codex）、`.cursor-plugin/plugin.json`（Cursor）与
+`.qoder-plugin/plugin.json`（QoderWork） — 共享同一套 `skills/`、`hooks/` 与 `bin/`。Cursor 还会使用 `mcp.json` 中声明的 `zion` MCP 服务器；
 Claude Code 与 Codex 则忽略它，改为通过 bin 启动器调用 CLI。其 CLI 配方以绝对路径调用启动器
 （`${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp`，在两种宿主下均可解析），而非裸命令，
 因此即使 PATH 上全局安装了 `zion-mcp`（或 `zion`）也无法将其覆盖。启动器始终通过

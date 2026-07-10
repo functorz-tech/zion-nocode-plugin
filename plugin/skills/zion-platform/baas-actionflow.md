@@ -18,6 +18,11 @@ AI-agent nodes, and video generation. Two steps:
    Several messages may arrive; status transitions CREATED → PROCESSING → COMPLETED|FAILED. The
    final output lives in the COMPLETED message's output field.
 
+fz_invoke_action_flow returns the Json scalar — a LEAF field: no sub-selection on the result; parse
+it client-side. Always pass $args as one whole Json variable, never assembled inline in the query
+string. Permission failures surface as errorCode 403 entries in the GraphQL errors array
+(classification ACTION_FLOW) — anonymous users commonly lack invoke permission.
+
 ## Testing against the deployed backend (CLI)
 
 This is a **runtime** spoke — it describes calling a DEPLOYED Zion app's SINGLE auto-generated
@@ -29,9 +34,9 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" support graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" support query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
-`support graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `support query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint — this CLI does not open runtime subscriptions.
+`runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 
 Design the flow in the design-time `actionflow.md`, then invoke the deployed version via the protocol above.

@@ -220,6 +220,7 @@ Each capability is a sibling file in this skill folder. When a task calls for on
 - **BaaS runtime — AI agent invocation** (`baas-ai-agent.md`) — Invoke ZAI AI agents from the runtime GraphQL API — create a conversation, stream / structured results, continue / stop. Runtime counterpart to ai-agent.
 - **BaaS runtime — binary asset upload** (`baas-assets.md`) — Upload binary assets (image / video / file) to a deployed project via the mandatory presigned-URL + MD5 two-step, then reference them by id.
 - **BaaS runtime — third-party API invocation** (`baas-third-party-api.md`) — Invoke a project's imported third-party HTTP APIs from the runtime GraphQL API (operation_<id>, response branching). Runtime counterpart to third-party-api.
+- **BaaS runtime — payments** (`baas-payments.md`) — Charge end-users of a deployed project via Alipay / WeChat Pay — server-side order creation, the gateway mutations, and async webhook + idempotent fulfillment. Runtime counterpart to payments.
 
 ## Driving a project from the CLI
 
@@ -227,8 +228,9 @@ Each capability is a sibling file in this skill folder. When a task calls for on
 
 ```bash
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; re-run "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login if expired
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search --projectName "My App"    # find the project exId
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>  # pin it for schema work (project verbs also take --projectExId)
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"     # NEW project — auto-pins it; type-system state follows the account rollout
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search --projectName "My App"    # …or find an EXISTING project's exId
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>  # …and pin it (project verbs also take --projectExId)
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project metadata                          # plan, capabilities, deployment
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the data-model session — and READ its `typeSystem` field
 #   ... read the matching capability sub-document (see Capabilities above), then edit ...

@@ -65,7 +65,7 @@ To unique-constrain a relation field, use the FK field name ("user_id"), not the
 Use GEO_POINT for coordinates. Never split into separate latitude/longitude fields. A GEO_POINT field auto-generates a companion DECIMAL hack field named "fz_distance_from_<systemName>", where <systemName> is the geo_point's systemName (may differ from its displayName). At request time it returns the distance from the stored geo_point to the user-supplied location in the request. Treat it as a distance-calculation hack — future migration: this will be replaced by formula fields.
 
 ### Constraints
-Only unique constraints supported. Constraint name: lowercase English snake_case, no uppercase. Reference columns by their system name (snake_case), not their display name — for a relation's foreign key use the FK column name ("user_id"). A single-column unique constraint can also be set via a field's 'unique' flag; use a constraint to span multiple columns (composite unique): list the columns' system names.
+Only unique constraints supported. Constraint name: lowercase English snake_case, no uppercase. Reference columns by their system name (snake_case), not their display name — for a relation's foreign key use the FK column name ("user_id"). A single-column unique constraint can also be set via a field's 'unique' flag; use a constraint to span multiple columns (composite unique): list the columns' system names. Unique constraints are also the only DB-enforced invariant writers can lean on for atomic insert-if-absent / toggle semantics (insert with on_conflict): whenever the design has "at most one row per X" semantics (a join/like/save table, an idempotency key), create the unique constraint up front — read-check-then-insert cannot be made race-safe without it.
 
 ## How to drive it (CLI only)
 
@@ -74,7 +74,10 @@ between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>  # pin the project ("${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search to find it)
+# create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
 ```
 
@@ -161,15 +164,15 @@ Then ship:
 - **Type changes** aren't editable: delete + recreate the column.
 - If results look stale, run `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema reload`.
 
-## Reading & writing deployed rows (supportservice)
+## Reading & writing deployed rows (runtime backend)
 
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" support query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" support insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" support update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" support delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
 - `insert` must supply every NOT-NULL column; object keys are the column **systemName**.
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.

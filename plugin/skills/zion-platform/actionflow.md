@@ -15,7 +15,7 @@ What fires a flow. Four kinds: Manual (a UI action — no config), scheduled (cr
 These are the fixed built-in node types — the only values accepted for a node's `type`:
 Database: query/insert/update/delete on a table. Call API: invoke a configured API; bind response to output params. Run AI: execute a ZAI agent (async only). Run Actionflow: call another flow (sync cannot call async). Set Variable: assign values to declared flow-level variables. Permissions: grant or revoke roles for a user. Run Code: execute custom JavaScript. Condition: branch logic evaluated left to right. Loop: iterate over a list; inner nodes access item data.
 
-Everything else is a **preset integration node** (the `TEMPLATE_CODE` node type) from a server-managed catalog that varies by deployment — including getting the current user's ID / WeChat OpenID / Access Token, file/media conversion to Zion native types, SMS, and video/AI generation. There is NO built-in `CURRENT_USER` / `FILES` / `SMS` node type; do not pass those to `ADD_ACTION_FLOW_NODE`. The current catalog (each template's `templateCodeId` plus its input/output types) is pre-fetched for you in the "Preset Integration Node Catalog" section below — look up the template there and insert it with `ADD_ACTION_FLOW_NODE` using the `TEMPLATE_CODE` node type and its `templateCodeId`. Call `list_node_templates` only to refresh that list.
+Everything else is a **preset integration node** (the `TEMPLATE_CODE` node type) from a server-managed catalog that varies by deployment — including getting the current user's ID / WeChat OpenID / Access Token, file/media conversion to Zion native types, SMS, and video/AI generation. There is NO built-in `CURRENT_USER` / `FILES` / `SMS` node type; do not pass those to `ADD_ACTION_FLOW_NODE`. The current catalog (each template's `templateCodeId` plus its input/output types) is pre-fetched for you in the "Preset Integration Node Catalog" section below — look up the template there and insert it with `ADD_ACTION_FLOW_NODE` using the `TEMPLATE_CODE` node type and its `templateCodeId`. Call `actionflow list-node-templates` only to refresh that list.
 
 ### Choosing How to Express Logic: nodes → formulas → code
 Three tiers, in order of preference:
@@ -33,7 +33,17 @@ A flow returns a **set of named output fields**: add them with `ADD_ACTION_FLOW_
 `DELETE_ACTION_FLOW_OUTPUT_FIELDS`.
 
 ### Building & Editing a Flow
-Create flows with `ADD_ACTION_FLOWS` (each seeds an empty FLOW_START → FLOW_END), then read node and structure ids from `GET_ACTION_FLOW_DETAIL` before editing. Add a node after another with `ADD_ACTION_FLOW_NODE`, reorder with `MOVE_ACTION_FLOW_NODE`, remove with `DELETE_ACTION_FLOW_NODES`, and branch a Condition node with `ADD_ACTION_FLOW_BRANCH_ITEM`. Edit a node's name or type-scalar config with `UPDATE_ACTION_FLOW_NODE`, but set its data bindings (values, conditions, data sources, mutation fields) with the bindings plugin at the node's schema path — never inline. Declare flow variables with `ADD_ACTION_FLOW_GLOBAL_VARIABLES` and assign them in a Set Variable node with `ADD_GLOBAL_VARIABLES_NODE_TARGETS`. A Run Code node's `args.<name>` input slots are managed with `ADD_CUSTOM_CODE_NODE_INPUT` (rename/delete variants); its result type is declared with `SET_CUSTOM_CODE_NODE_OUTPUT_TYPE` (or several named results with `ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE`) so downstream nodes can bind to it; fill the code body with `generate_code`. An update or delete Database node is seeded with an always-true filter that matches **every** row — narrow it with the bindings plugin's request filters before syncing, or the write hits the whole table.
+Create flows with `ADD_ACTION_FLOWS` (each seeds an empty FLOW_START → FLOW_END), then read node and structure ids from `GET_ACTION_FLOW_DETAIL` before editing. Add a node after another with `ADD_ACTION_FLOW_NODE`, reorder with `MOVE_ACTION_FLOW_NODE`, remove with `DELETE_ACTION_FLOW_NODES`, and branch a Condition node with `ADD_ACTION_FLOW_BRANCH_ITEM`. Every node's displayName must state its business intent ('Insert generation request', 'Decrement like count') — `ADD_ACTION_FLOW_NODE` rejects a blank name; never leave the node-type default. Edit a node's name or type-scalar config with `UPDATE_ACTION_FLOW_NODE`, but set its data bindings (values, conditions, data sources, mutation fields) with the bindings plugin at the node's schema path — never inline. A node's schema path is NEVER hand-built: copy it from `ADD_ACTION_FLOW_NODE`'s result or `GET_ACTION_FLOW_DETAIL`'s nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments to reach a binding site inside the node — e.g. a code node's input arg is `.../allNodes/{j}/inputArgsDataBinding/<argName>`, a mutation column is `.../allNodes/{j}/mutation/object/<columnName>`. Declare flow variables with `ADD_ACTION_FLOW_GLOBAL_VARIABLES` and assign them in a Set Variable node with `ADD_GLOBAL_VARIABLES_NODE_TARGETS`. A Run Code node's `args.<name>` input slots are managed with `ADD_CUSTOM_CODE_NODE_INPUT` (rename/delete variants); its result type is declared with `SET_CUSTOM_CODE_NODE_OUTPUT_TYPE` (or several named results with `ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE`) so downstream nodes can bind to it; fill the code body by writing the JS and installing it as a `CONST_VALUE` binding at the code field. An update or delete Database node is seeded with an always-true filter that matches **every** row — narrow it with the bindings plugin's request filters before syncing, or the write hits the whole table. A Third-party API node's request parameters are pre-seeded on the node when the API is selected — read the node back and bind ONLY the parameter slots it shows (on legacy projects these live in the `event/input` tree, e.g. `.../event/input/object/{k}/value`; on refactored projects in `event/inputs/<param>`). NEVER invent input keys the read-back does not show: writes to made-up keys are accepted but the runtime and editor ignore them, so the call executes with empty parameters.
+
+### Node Input Visibility (Scope)
+What a node can bind to is not "any earlier node": ztype limits it to the nodes **visible** from that site — the ones on its straight path back from FLOW_START. The data binding options tree returned with every binding response (its "Actionflow data" branch) already applies this rule and is the authoritative list of reachable node outputs; if a node is absent there it is out of scope, so never hand-build a path to reach it.
+
+Loops and Condition branches are **one-way scopes**. From *inside* a block, a node sees the outer scope, the flow inputs, and — in a Loop — the current item; but from *outside* the block (any node after the loop's end or after a branch merge) the block's inner nodes are invisible, and sibling branches never see one another. A value produced inside one branch or one loop iteration therefore CANNOT be bound directly by a later node — it will not appear in that node's options tree.
+
+To carry a branch- or loop-dependent value past the block, use a **flow variable** — the only output that crosses a scope boundary. Declare it once with `ADD_ACTION_FLOW_GLOBAL_VARIABLES` (type copied from `GET_ACTION_FLOW_SELECTABLE_TYPES`), assign it *inside* the branch or loop body with a Set Variable node (`ADD_GLOBAL_VARIABLES_NODE_TARGETS`), then read the variable from any later node. Idioms: choose a value by branch — assign the SAME variable in every branch, then read it after the merge; capture or accumulate across a Loop — assign the variable inside the loop body, then read it after the loop's end. A branch that never assigns the variable leaves its prior value, so set a sensible default before the branch when every path must yield one.
+
+### Concurrency
+Concurrent invocations of the same flow interleave between nodes; sync-mode ACID rolls back on error but does NOT serialize flows (read committed). Query-a-row, branch, then write based on that read is a race: concurrent calls all act on the same stale read. Where the platform can express the check inside the write, prefer that: put row-local guards in the mutation node's own filter (update where stock >= qty; delete where the key pair matches) and branch on the write's affected rows; use an update node's increment/decrement mode for counters; for insert-if-absent or toggle semantics use a unique constraint (the only DB-enforced constraint kind today) with `insert ... on_conflict do nothing` and branch on affected_rows — that idiom is only expressible in a Run Code node, which makes it a legitimate Run Code use. Invariants none of these can express (cross-row rules, aggregates) have no atomic form yet; check-then-write is the accepted fallback there.
 
 ### Error Handling
 Synchronous: all DB changes roll back on error. Asynchronous: only the failing node's DB changes roll back.
@@ -51,7 +61,10 @@ between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>  # pin the project ("${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search to find it)
+# create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
 ```
 
@@ -155,12 +168,12 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 ### `GET_ACTION_FLOW_DETAIL`
 
-Get the full structure of one action flow: its input params, output, declared variables, and node tree. Use a flow id from GET_ALL_ACTION_FLOW_INFOS.
+Get the full structure of one action flow: its input params, output, declared variables, and node tree. Use a flow id from GET_ALL_ACTION_FLOW_INFOS. The result's nodeSchemaPaths maps each node id to the canonical schemaPath (server/actionFlows/{i}/allNodes/{j}) required by GET_ACTION_FLOW_CONTEXT_INFO and the bindings tools — always copy it verbatim, never hand-build node paths.
 - `actionFlowId` *(required)*: `string` — The unique id of the action flow to inspect.
 
 ### `GET_ACTION_FLOW_CONTEXT_INFO`
 
-Return the data and variables in scope at a node's schema path — what a binding at that path may reference (upstream node outputs, flow inputs, variables).
+Return the data and variables in scope at a node's schema path — what a binding at that path may reference (upstream node outputs, flow inputs, variables). Pass the node's schemaPath from GET_ACTION_FLOW_DETAIL's nodeSchemaPaths verbatim; do not hand-build the path.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
 
 ### `ADD_ACTION_FLOWS`
@@ -202,7 +215,7 @@ Remove input params from an action flow.
 
 ### `ADD_ACTION_FLOW_NODE`
 
-Insert a node immediately after an existing node (afterNodeId). Read node ids from GET_ACTION_FLOW_DETAIL first. Set the node's data bindings afterwards with the bindings plugin at the node's schema path.
+Insert a node immediately after an existing node (afterNodeId). Read node ids from GET_ACTION_FLOW_DETAIL first. displayName is REQUIRED: a short business-intent name ('Insert generation request', 'Decrement like count'), never the node-type default. Returns the added nodes with their canonical schemaPath — use it directly for GET_ACTION_FLOW_CONTEXT_INFO and the bindings tools (extend it with key segments for a binding site inside the node, e.g. inputArgsDataBinding/<argName>).
 - `actionFlowId` *(required)*: `string`
 - `afterNodeId` *(required)*: `string` — Insert the new node immediately after this node (its uniqueId).
 - `displayName`: `string` — Optional display name; defaults to the localized node-type name.
@@ -263,7 +276,7 @@ Add assignment targets (flow-variable keys) to a Set Variable node; bind each va
 
 ### `ADD_CUSTOM_CODE_NODE_INPUT`
 
-Add a named input slot (referenced as args.<name>) to a Run Code node; bind its value with the bindings plugin. Generate the code body with generate_code.
+Add a named input slot (referenced as args.<name>) to a Run Code node; bind its value with the bindings plugin. Set the code body by writing the JS and installing it as a `CONST_VALUE` binding at the code field.
 - `actionFlowId` *(required)*: `string`
 - `name` *(required)*: `string` — Name (key) of the new input; must be unique within the node.
 - `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
@@ -303,7 +316,7 @@ Get one database-change trigger's full configuration by id.
 
 ### `ADD_DB_TRIGGERS`
 
-Create database-change triggers. Each fires a flow (actionFlowId from GET_ALL_ACTION_FLOW_INFOS) when a row in a table (tableDisplayName from the database plugin's list_tables) is inserted / updated / deleted (dbOperationType, defaults to INSERT).
+Create database-change triggers. Each fires a flow (actionFlowId from GET_ALL_ACTION_FLOW_INFOS) when a row in a table (tableDisplayName from the database plugin) is inserted / updated / deleted (dbOperationType, defaults to INSERT).
 - `items` *(required)*: `array<{actionFlowId: string, dbOperationType?: enum(INSERT|UPDATE|INSERT_OR_UPDATE|DELETE), displayName?: string, enabled?: boolean, tableDisplayName: string}>` — Database triggers to create. Each fires its action flow on the chosen table operation, with the flow's input args seeded as empty bindings (fill them via the data-binding tools at the schema paths from GET_DB_TRIGGER_DETAIL) and an always-true firing condition (edit it via the condition tools at the condition schema path from GET_DB_TRIGGER_DETAIL).
 
 ### `UPDATE_DB_TRIGGER`

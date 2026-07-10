@@ -4,16 +4,18 @@
 Data binding connects data sources to UI components for display or interaction.
 
 ### Concepts
-Schema path: array of keys/indices locating a bindable node in the project JSON schema. Data binding options tree: hierarchical tree of all available data for a given schema path.
+Schema path: array of keys/indices locating a bindable node in the project JSON schema. Data binding options tree: hierarchical tree of all available data for a given schema path. Never hand-build a schema path for an action-flow node: copy it from the actionflow plugin's add_node result or get_flow_detail's nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments for the binding site inside the node (e.g. inputArgsDataBinding/<argName>, mutation/object/<columnName>).
 
 ### Binding Kinds
-OPTION: bind to an existing path in the data binding options tree. pathInHierarchicalMenu must be the EXACT complete path. Never guess or fabricate. If the tree root is a named context (e.g., "List Context"), include it as the first element. CONST_VALUE: set a literal constant (e.g., "Submit", 0, false). FORMULA: compute a value with an operator (text / math / time / array / enum / geography / json groups); discover the available operators before building one. CONDITIONAL: choose the value by branch — define the branches, then build each branch's predicate. DISPLAY_NAME: rename a component's displayed title.
+OPTION: bind to an existing path in the data binding options tree. pathInHierarchicalMenu must be the EXACT complete path: copy every label verbatim from the options tree attached to binding tool responses (or from a failure's available-options list) — never invent, translate, or shorten a label, and include every intermediate menu level. If the tree root is a named context (e.g., "List Context"), include it as the first element. CONST_VALUE: set a literal constant (e.g., "Submit", 0, false). FORMULA: compute a value with an operator (text / math / time / array / enum / geography / json groups); discover the available operators before building one. CONDITIONAL: choose the value by branch — define the branches, then build each branch's predicate. DISPLAY_NAME: rename a component's displayed title.
 
 ### Priority
 1. Prefer OPTION (live data) over CONST_VALUE.
 2. No suitable option? Use CONST_VALUE with a reasonable inferred constant.
 3. Component purpose unclear? Skip binding.
 4. List component with an ancestor list: prefer binding from the ancestor list's item data to preserve relational linkage — not directly from a table.
+5. Bind ONLY what the task requires: in an update/insert node's object leave every other column untouched — never fill it with a Null option or a placeholder constant (Null on a required column breaks the flow at runtime).
+6. Never seed a typed site with a throwaway constant "for now" and upgrade later — bind the real value directly; a constant re-types nothing but still wastes a round.
 
 ### Iterative Refinement
 Per-op errors are returned keyed by index. Successful bindings have already landed. On rejection, fix ONLY the failing entries by index and re-call.
@@ -22,14 +24,18 @@ Per-op errors are returned keyed by index. Successful bindings have already land
 Database tables (with filters/sorting/limits), page data sources, page variables, global variables, page parameters, logged-in user, list/component item data, Actionflow inputs/outputs, formula results.
 
 ### Request Filters (where / sort)
-A database-query data source — a list/component request, or an action-flow query / update / delete node — carries **request filters**: a list of conditional filters, each a where-expression plus sort rules, gated by its own condition, always including a system Default filter. FIRST call `GET_REQUEST_FILTER_CONTEXT` with the request's (or owning node's) schema path: it returns the table's selectable columns (with the `pathComponents` and `allowedOperators` to use) and each conditional filter's `whereSchemaPath` / `sortConfigsSchemaPath`. Copy those paths and column `pathComponents` verbatim — never hand-build them.
+A database-query data source — a list/component request, or an action-flow query / update / delete node — carries **request filters**. FIRST call `GET_REQUEST_FILTER_CONTEXT` with the request's (or owning node's) schema path: it returns the table's selectable columns (with the `pathComponents` and `allowedOperators` to use) and the filter entries' `whereSchemaPath` / `sortConfigsSchemaPath`. Copy those paths and column `pathComponents` verbatim — never hand-build them. Queries and component requests carry a LIST of conditional filters (where + sort groups, each gated by its own condition, always including a system Default filter). An action-flow update/delete node instead carries ONE bare where (`supportsConditionalFilters: false` in the context result) — edit it via the single entry's `whereSchemaPath` with the where-condition tools only; the filter-group and sort tools do not apply, and insert nodes have no request filter at all.
+To change a numeric column RELATIVE to its current value (stock, counters, balances), set the column's write mode with `SET_UPDATE_COLUMN_ARITHMETIC` and bind only the DELTA as the column's value — the database applies it atomically. Never query the current value, compute in a formula, and set it back: that read-modify-write loses concurrent updates. Idiom — decrease field_a by x: mode 'decrement' on field_a, value x, and a where guard `field_a > x` (or `>= x` when draining to zero is allowed) so the update changes nothing when the stored value is insufficient. That rule generalizes to every mutation this plugin configures — frontend component mutation events and action-flow nodes alike: when a write's correctness depends on current row state, put the check in the mutation's own where filter and let follow-ups branch on its affected rows, instead of querying first and writing on the stale read (concurrent users race it). Insert-if-absent semantics additionally need a unique constraint — the only DB-enforced constraint kind today (see the database plugin).
 - Filter groups: `ADD_REQUEST_CONDITIONAL_FILTER` / `UPDATE_REQUEST_CONDITIONAL_FILTER` / `DELETE_REQUEST_CONDITIONAL_FILTER` / `REORDER_REQUEST_CONDITIONAL_FILTERS`. The Default filter cannot be renamed or deleted.
 - Where conditions: `ADD_REQUEST_FILTER_CONDITION` (column + operator), then fill its comparison value with a binding (OPTION / CONST_VALUE) at the condition's `value` path; shape the expression with `NEST_REQUEST_FILTER_CONDITION`, `TOGGLE_REQUEST_FILTER_CONDITION_AND_OR`, `TOGGLE_REQUEST_FILTER_CONDITION_NOT`, `UPDATE_REQUEST_FILTER_CONDITION_OPERATOR`, `DELETE_REQUEST_FILTER_CONDITION`.
 - Sort: `ADD_REQUEST_SORT_CONFIG` / `UPDATE_REQUEST_SORT_CONFIG` / `DELETE_REQUEST_SORT_CONFIG` / `REORDER_REQUEST_SORT_CONFIGS`.
 
+### Composing text from fragments and variables
+For any TEXT value that mixes literal fragments with variables — AI prompt templates, titles, labels, messages — do NOT build a stringConcat formula. Append the pieces IN ORDER at the same schema path with operation CONCAT: `CREATE_CONST_BINDING` (operation CONCAT) for each literal fragment, `CREATE_OPTION_BINDING` (operation CONCAT) for each variable. This produces the same inline template the editor's text fields produce and stays editable there. Reserve formulas for real computation (math, time, regex, arrays) — never for simple text templating.
+
 ### Formula & Conditional Bindings
 A FORMULA or CONDITIONAL value is built in several steps at the value's schema path, not in a single call.
-- Formula: call `GET_FORMULA_OPERATORS` at the path, then `CREATE_FORMULA_BINDING` with an operator copied verbatim (operation REPLACE). If the operator needs scalar config (e.g. distance unit, rounding mode), read its shape with `GET_FORMULA_CONFIG_OPTIONS` and pass it or apply it later with `SET_FORMULA_CONFIG`. Fill the operator's operands with OPTION / CONST_VALUE bindings at their own schema paths.
+- Formula: call `GET_FORMULA_OPERATORS` at the path, then `CREATE_FORMULA_BINDING` with an operator copied verbatim (the wire token, e.g. `-` not SUBTRACT; operation REPLACE). If the operator needs scalar config (e.g. distance unit, rounding mode), read its shape with `GET_FORMULA_CONFIG_OPTIONS` and pass it or apply it later with `SET_FORMULA_CONFIG`. The create result returns `operandSchemaPaths` — fill each operand with an OPTION / CONST_VALUE binding at its returned path, copied verbatim; never derive an operand path yourself.
 - Conditional: `CREATE_CONDITIONAL_BINDING` (seed branches with initialBranchNames; operation REPLACE), add more with `INSERT_CONDITIONAL_DATA`. For each branch, build its predicate with `INSERT_CONDITION_BOOL_EXP`, choose the comparison via `GET_EXPRESSION_CONDITION_OPERATORS` + `UPDATE_EXPRESSION_CONDITION_OPERATOR`, fill both operands with OPTION / CONST_VALUE bindings, and shape the expression with `NEST_CONDITION_BOOL_EXP`, `TOGGLE_CONDITION_BOOL_EXP_AND_OR`, `TOGGLE_CONDITION_BOOL_EXP_NOT`, `DELETE_CONDITION_BOOL_EXP`; then bind the branch's resulting value. The first branch whose predicate is true wins — order them with `REORDER_CONDITIONAL_DATA`.
 
 ## How to drive it (CLI only)
@@ -39,7 +45,10 @@ between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>  # pin the project ("${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search to find it)
+# create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
 ```
 
@@ -164,16 +173,16 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 ### `CREATE_FORMULA_BINDING`
 
-Create a formula binding at a schema path that computes a value with an operator (from GET_FORMULA_OPERATORS); operation is REPLACE (set the value) or CONCAT (append). Some operators need a scalar config (e.g. distance unit, rounding mode) — discover its shape with GET_FORMULA_CONFIG_OPTIONS and pass it, or set it later with SET_FORMULA_CONFIG. Fill the operator's operand values afterwards with the const/option binding tools at their schema paths.
-- `config`: `object · kind: enum(GEO_DISTANCE|GEO_POINT_GET_VALUE|DECIMAL|NUMBER_FORMATTING|DURATION_FORMATTING|DURATION|TIME_GET_PART|TIME_OPERATION|GET_CURRENT_TIME|DATE_TIME_FORMATTING|RELATIVE_TIME) · per-kind: {language: enum(EN|ZH)} | {clearTrailingZeros: boolean, roundingMode: enum(HALF_EVEN|HALF_UP|HALF_DOWN|UP|DOWN|CEILING|FLOOR)} | {dateTimeUnit: enum(YEAR|MONTH|DAY|HOUR|MINUTE|SECOND|MILLISECOND|WEEKDAY|WEEK)} | {timeUnit: enum(DAY|HOUR|MINUTE|SECOND|MILLISECONDS)} | {unit: enum(METER|KILOMETER|MILE)} | {getValueType: enum(LATITUDE|LONGITUDE)} | {timeType: enum(DATE|TIME|TIMESTAMP)} | {decimalPlaces?: integer, format: enum(THOUSANDS_SEPARATOR|PERCENT)} | {hideSuffix?: boolean, language: enum(EN|ZH)} | {direction: enum(LATER|BEFORE)}` — Optional non-databinding scalar config for the created formula (e.g. distance unit, rounding mode, time unit). The config kind must match the chosen operator, otherwise the call fails. Use GET_FORMULA_CONFIG_OPTIONS on an existing formula to discover the exact shape and the allowed values.
+Create a formula binding at a schema path that computes a value with an operator (from GET_FORMULA_OPERATORS, copied verbatim — e.g. '-' not SUBTRACT); operation is REPLACE (set the value) or CONCAT (append). Some operators need a scalar config (e.g. distance unit, rounding mode) — discover its shape with GET_FORMULA_CONFIG_OPTIONS and pass it, or set it later with SET_FORMULA_CONFIG. The result returns formulaSchemaPath and operandSchemaPaths — fill each operand afterwards with a const/option binding tool at its returned path, copied verbatim; never derive an operand path yourself.
+- `config`: `object · kind: enum(GEO_DISTANCE|GEO_POINT_GET_VALUE|DECIMAL|NUMBER_FORMATTING|DURATION_FORMATTING|DURATION|TIME_GET_PART|TIME_OPERATION|GET_CURRENT_TIME|DATE_TIME_FORMATTING|RELATIVE_TIME) · per-kind: {language: enum(EN|ZH)} | {clearTrailingZeros: boolean, roundingMode: enum(HALF_EVEN|HALF_UP|HALF_DOWN|UP|DOWN|CEILING|FLOOR)} | {dateTimeUnit: enum(year|month|day|hour|minute|second|millisecond|weekday|week)} | {timeUnit: enum(day|hour|minute|second|millisecond)} | {unit: enum(METER|KILOMETER|MILE)} | {getValueType: enum(latitude|longitude)} | {timeType: enum(DATE|TIME|TIMESTAMP)} | {decimalPlaces?: integer, format: enum(THOUSANDS_SEPARATOR|PERCENT)} | {hideSuffix?: boolean, language: enum(EN|ZH)} | {direction: enum(later|before)}` — Optional non-databinding scalar config for the created formula (e.g. distance unit, rounding mode, time unit). The config kind must match the chosen operator, otherwise the call fails. Use GET_FORMULA_CONFIG_OPTIONS on an existing formula to discover the exact shape and the allowed values.
 - `operation`: `enum(REPLACE|CONCAT)`
-- `operator`: `enum(TO_STRING|TO_INTEGER|TO_DECIMAL|TO_DATE_TIME|ADD|SUBTRACT|MULTIPLY|DIVIDE|MODULO|MIN|… 80 total)`
+- `operator`: `enum(toText|toInteger|toDecimal|toDateTime|+|-|*|/|%|min|… 80 total)`
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
 
 ### `SET_FORMULA_CONFIG`
 
 Set the non-databinding scalar config of an existing formula (e.g. rounding mode, time unit); the shape must match the operator — read it with GET_FORMULA_CONFIG_OPTIONS.
-- `config` *(required)*: `object · kind: enum(GEO_DISTANCE|GEO_POINT_GET_VALUE|DECIMAL|NUMBER_FORMATTING|DURATION_FORMATTING|DURATION|TIME_GET_PART|TIME_OPERATION|GET_CURRENT_TIME|DATE_TIME_FORMATTING|RELATIVE_TIME) · per-kind: {language: enum(EN|ZH)} | {clearTrailingZeros: boolean, roundingMode: enum(HALF_EVEN|HALF_UP|HALF_DOWN|UP|DOWN|CEILING|FLOOR)} | {dateTimeUnit: enum(YEAR|MONTH|DAY|HOUR|MINUTE|SECOND|MILLISECOND|WEEKDAY|WEEK)} | {timeUnit: enum(DAY|HOUR|MINUTE|SECOND|MILLISECONDS)} | {unit: enum(METER|KILOMETER|MILE)} | {getValueType: enum(LATITUDE|LONGITUDE)} | {timeType: enum(DATE|TIME|TIMESTAMP)} | {decimalPlaces?: integer, format: enum(THOUSANDS_SEPARATOR|PERCENT)} | {hideSuffix?: boolean, language: enum(EN|ZH)} | {direction: enum(LATER|BEFORE)}` — The non-databinding scalar config to apply to the formula at the path. The config kind must match the target formula; call GET_FORMULA_CONFIG_OPTIONS first to discover the exact shape and the allowed values for each field.
+- `config` *(required)*: `object · kind: enum(GEO_DISTANCE|GEO_POINT_GET_VALUE|DECIMAL|NUMBER_FORMATTING|DURATION_FORMATTING|DURATION|TIME_GET_PART|TIME_OPERATION|GET_CURRENT_TIME|DATE_TIME_FORMATTING|RELATIVE_TIME) · per-kind: {language: enum(EN|ZH)} | {clearTrailingZeros: boolean, roundingMode: enum(HALF_EVEN|HALF_UP|HALF_DOWN|UP|DOWN|CEILING|FLOOR)} | {dateTimeUnit: enum(year|month|day|hour|minute|second|millisecond|weekday|week)} | {timeUnit: enum(day|hour|minute|second|millisecond)} | {unit: enum(METER|KILOMETER|MILE)} | {getValueType: enum(latitude|longitude)} | {timeType: enum(DATE|TIME|TIMESTAMP)} | {decimalPlaces?: integer, format: enum(THOUSANDS_SEPARATOR|PERCENT)} | {hideSuffix?: boolean, language: enum(EN|ZH)} | {direction: enum(later|before)}` — The non-databinding scalar config to apply to the formula at the path. The config kind must match the target formula; call GET_FORMULA_CONFIG_OPTIONS first to discover the exact shape and the allowed values for each field.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The schema path of the formula binding whose scalar config should be set.
 
 ### `CREATE_CONDITIONAL_BINDING`
@@ -199,7 +208,7 @@ Update a branch of a conditional binding (e.g. rename it) by its schema path.
 
 ### `INSERT_CONDITION_BOOL_EXP`
 
-Add a comparison to a branch's predicate at the given where-expression schema path. The comparison is seeded empty — pick its operator with UPDATE_EXPRESSION_CONDITION_OPERATOR and fill both operands with the const/option binding tools at their schema paths.
+Add a comparison to a branch's predicate at the given where-expression schema path. Returns the new comparison's conditionSchemaPath — copy it verbatim into UPDATE_EXPRESSION_CONDITION_OPERATOR and extend it with /target and /value for the operand bindings; never hand-build condition paths.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
 
 ### `UPDATE_EXPRESSION_CONDITION_OPERATOR`
@@ -210,7 +219,7 @@ Set the comparison operator of a condition at the given schema path (values from
 
 ### `GET_REQUEST_FILTER_CONTEXT`
 
-Inspect a request's filters before editing them. Returns the table's selectableColumns (each with the pathComponents to copy verbatim and its allowedOperators) plus every conditional filter with its whereSchemaPath, sortConfigsSchemaPath, and conditionSchemaPath. Call this first; never hand-build a filter or column path. Pass the schema path of the query/mutation request, or of the action-flow query/mutation node that owns it (from GET_ACTION_FLOW_DETAIL).
+Inspect a request's filters before editing them. Call this first; never hand-build a filter or column path — copy the column paths and operators it returns verbatim. Pass the schema path of the query/mutation request, or of the action-flow query/mutation node that owns it (from GET_ACTION_FLOW_DETAIL). When the result says supportsConditionalFilters: false (an action-flow update/delete node has ONE bare where, not filter groups), only the where-condition tools apply — use the single entry's whereSchemaPath and skip the conditional-filter and sort tools. Insert nodes have no request filter.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
 
 ### `ADD_REQUEST_CONDITIONAL_FILTER`
@@ -230,7 +239,7 @@ Rename a conditional filter by id (from GET_REQUEST_FILTER_CONTEXT). The Default
 ### `ADD_REQUEST_FILTER_CONDITION`
 
 Add a column where-condition to a conditional filter. Target the filter's whereSchemaPath (or a nested AND/OR within it) from GET_REQUEST_FILTER_CONTEXT, pass the column's pathComponents copied verbatim from selectableColumns, and pick an operator from that column's allowedOperators (defaults to _eq). The comparison value is seeded empty — fill it afterwards with a binding tool at the condition's value path.
-- `columnPathComponents` *(required)*: `array<{componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(SUCCESS|PERMANENT_FAIL|TEMPORARY_FAIL), type?: string}>` — The column to filter on, as a `pathComponents` list copied verbatim from a GET_REQUEST_FILTER_CONTEXT `selectableColumns` entry — never hand-built.
+- `columnPathComponents` *(required)*: `array<{componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — The column to filter on, as a `pathComponents` list copied verbatim from a GET_REQUEST_FILTER_CONTEXT `selectableColumns` entry — never hand-built.
 - `operator`: `string` — Comparison operator (e.g. `_eq`, `_neq`, `_gt`, `_lt`, `_gte`, `_lte`, `_is_null`, `_is_not_null`, `_in`, `_nin`, `_like`, `_ilike`). Defaults to `_eq`. Pick one from the column's `allowedOperators` in GET_REQUEST_FILTER_CONTEXT.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the target conditional filter's `where` (the `whereSchemaPath` from GET_REQUEST_FILTER_CONTEXT), or a nested AND/OR sub-expression within it to append into.
 - `value`: `object` — Optional comparison value binding; an empty value of the column's type is seeded when omitted, to be filled afterwards with a CREATE_*_BINDING tool on this condition's `value`.
@@ -244,17 +253,17 @@ Change the comparison operator of an existing column where-condition at the give
 ### `ADD_REQUEST_SORT_CONFIG`
 
 Add a sort rule to a conditional filter. Target the filter's sortConfigsSchemaPath from GET_REQUEST_FILTER_CONTEXT and pass the column pathComponents copied from selectableColumns; direction defaults to ascending.
-- `field` *(required)*: `array<{componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(SUCCESS|PERMANENT_FAIL|TEMPORARY_FAIL), type?: string}>` — The column to sort by, as a `pathComponents` list copied from a GET_REQUEST_FILTER_CONTEXT `selectableColumns` entry.
+- `field` *(required)*: `array<{componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — The column to sort by, as a `pathComponents` list copied from a GET_REQUEST_FILTER_CONTEXT `selectableColumns` entry.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the target conditional filter's `filter` (the `sortConfigsSchemaPath` from GET_REQUEST_FILTER_CONTEXT).
-- `sort`: `enum(DESCENDING|ASCENDING)` — Sort direction; defaults to ascending.
+- `sort`: `enum(descending|ascending)` — Sort direction; defaults to ascending.
 
 ### `UPDATE_REQUEST_SORT_CONFIG`
 
 Change a sort rule's column and/or direction by its index within the filter's sortConfigs.
-- `field`: `array<{componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(SUCCESS|PERMANENT_FAIL|TEMPORARY_FAIL), type?: string}>` — New sort column path components; unchanged when omitted.
+- `field`: `array<{componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — New sort column path components; unchanged when omitted.
 - `index` *(required)*: `integer` — Index of the sort config to update within the filter's `sortConfigs`.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
-- `sort`: `enum(DESCENDING|ASCENDING)` — New sort direction; unchanged when omitted.
+- `sort`: `enum(descending|ascending)` — New sort direction; unchanged when omitted.
 
 Then ship:
 

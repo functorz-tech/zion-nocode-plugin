@@ -25,8 +25,8 @@ meta: post_meta), 1:N → an array + a [rel]_aggregate object. Filter to-one rel
 to-many use EXISTS semantics.
 
 ## Filtering — the strict operator-first where grammar ([table]_bool_exp)
-This is the RAW GraphQL where shape for hand-written frontend queries and supportservice_graphql. It
-is NOT the simplified where the CLI `support query` helper accepts (that one is {column:{_op:value}})
+This is the RAW GraphQL where shape for hand-written frontend queries and runtime_graphql. It
+is NOT the simplified where the CLI `runtime query` helper accepts (that one is {column:{_op:value}})
 — see schema-table.md for the helper; use this grammar for real GraphQL.
 
 Logical: _and:[bool_exp], _or:[bool_exp], _not:bool_exp.
@@ -70,7 +70,7 @@ TEXT_COLUMN_VECTOR_SORT extension is applied.
 ## App-user authentication (for the frontend you generate)
 The deployed app's end-users obtain a JWT by logging in / registering against the same GraphQL API;
 unauthenticated requests fall back to the anonymous role. Distinct from the developer `login` that
-authenticates THIS CLI to Zion.
+authenticates THIS CLI to Zion. Zion apps conventionally sign up / log in by phone number (SMS code); email and username work too.
 
   mutation AuthenticateWithUsername($username:String!, $password:String!, $register:Boolean!) {
     authenticateWithUsername(username:$username, password:$password, register:$register) {
@@ -78,10 +78,32 @@ authenticates THIS CLI to Zion.
     }
   }
 
-The returned jwt.token is the Bearer token for that user's subsequent requests. authenticateWith-
-Username returns FZ_Account (a subset of account: email, id, permissionRoles, phoneNumber,
-profileImageUrl, roles, username). A server-side admin token, when you need one, is copied from the
-editor's Connect Backend modal — never hardcode it in client code.
+Email and phone flows send a verification code first (verificationEnumType: LOGIN, SIGN_UP, BIND,
+UNBIND, DEREGISTER, RESET_PASSWORD), then authenticate:
+  mutation ($email:String!, $type:verificationEnumType!) {
+    sendVerificationCodeToEmail(email:$email, verificationEnumType:$type) }
+  mutation ($email:String!, $password:String!, $verificationCode:String, $register:Boolean!) {
+    authenticateWithEmail(email:$email, password:$password, verificationCode:$verificationCode,
+      register:$register) { account { id permissionRoles } jwt { token } } }
+Phone is the same shape: sendVerificationCodeToPhone(telephone, verificationEnumType), then
+authenticateWithPhoneNumber(telephone, verificationCode, password, register) with the same
+selection set. For email/phone, supply password or verificationCode — at least one; registration
+usually needs both.
+
+Every variant returns jwt.token — the Bearer token for that user's subsequent requests — and
+FZ_Account (a subset of account: email, id, permissionRoles, phoneNumber, profileImageUrl, roles,
+username). A server-side admin token, when you need one, is copied from the editor's Connect
+Backend modal — never hardcode it in client code.
+
+## Subscription transport (WebSocket wire protocol)
+The subscription endpoint speaks the LEGACY subscriptions-transport-ws protocol, NOT the newer
+graphql-ws — a graphql-ws client fails the handshake. After connecting send
+{"type":"connection_init"}, wait for {"type":"connection_ack"}, then start each operation with
+{"id":"<unique per socket>","type":"start","payload":{operationName, query, variables}}; results
+arrive as {"type":"data","id":…,"payload":{…}} and end with {"type":"complete"}. With Apollo
+Client, use a subscriptions-transport-ws WebSocketLink split against the HTTP link. Re-establish
+the socket whenever the user's auth state changes (login/logout) so live queries carry the new
+role.
 
 ## Testing against the deployed backend (CLI)
 
@@ -94,9 +116,9 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" support graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" support query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
-`support graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `support query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint — this CLI does not open runtime subscriptions.
+`runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 
 Runtime counterpart to the design-time `schema-table.md` (define tables there; query the deployed data here). The formula functions usable inside `where` / `order_by` operands are catalogued in `baas-formulas.md`.

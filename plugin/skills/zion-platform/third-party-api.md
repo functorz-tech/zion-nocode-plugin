@@ -15,6 +15,9 @@ TPA fields use the TPA type set, independent of the project's type-system settin
 ### Workflow
 List configs with `GET_ALL_TPA_CONFIG_INFOS`, then `GET_TPA_CONFIG_DETAIL` to read a config's parameter and response `uniqueId`s — you pass these ids to the child tools. Create endpoints with `ADD_TPA_CONFIGS`; add request inputs with `ADD_TPA_CONFIG_PARAMETERS` (and `ADD_TPA_PARAMETER_CHILDREN` for object/array fields). Describe each response branch with `ADD_TPA_RESPONSE_DATA`, then `ADD_TPA_RESPONSE_DATA_CHILDREN` for nested fields. Configure list pagination with `SET_TPA_CONFIG_PAGING`. Editing a config creates a new version; "Sync Backend" is required for changes to take effect in production.
 
+### Model the response fields you consume
+A bare root OBJECT set with `ADD_TPA_RESPONSE_DATA` is NOT a finished response: nothing can bind typed values from it — flows only get the raw payload blob, and the API page shows an endpoint with no documented shape. After setting the root, ALWAYS model the fields your flows/bindings actually consume with `ADD_TPA_RESPONSE_DATA_CHILDREN` (from the API's docs or a sample response; nest children for the path you need, e.g. forecast → forecastday(ARRAY of OBJECT) → day(OBJECT) → avgtemp_c(DECIMAL)). Leaving the root unmodeled is acceptable ONLY when the entire payload is deliberately passed verbatim into a code/AI node — if you do that, state it explicitly in your read-back so the user knows it was a choice, not an omission.
+
 ### Importing from an OpenAPI / Swagger spec
 To onboard an existing API, prefer `tpa import-from-openapi` over hand-building configs: pass the spec as a `url` (fetched server-side; internal/private addresses are blocked) or paste it as `specText` (JSON or YAML). It creates each operation as a full TPA endpoint — parameters, body, and success/fail response shape — in one call, capped at 25 endpoints (use `pathsFilter` to scope larger specs); a failed import is rolled back. If the spec declares no absolute server URL the imported configs get relative urls — fix each with `UPDATE_TPA_CONFIG` using the base URL from the documentation. When you only have a human-readable docs page, `tpa fetch-doc` retrieves it (SSRF-guarded) and lets you explore the documentation iteratively: follow the returned same-site `pageLinks`, keep reading long pages with `offset`, and watch `specLinks` for a machine-readable spec to import — all within a 15-fetch session budget. If no spec exists, author the configs with the granular tools above from what you read.
 
@@ -38,7 +41,10 @@ between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>  # pin the project ("${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search to find it)
+# create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
+"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
 "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
 ```
 
@@ -85,7 +91,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 ### `ADD_TPA_CONFIGS`
 
 Create one or more API endpoints (name, url, HTTP method, query/mutation operation). Each is seeded with empty parameters and response branches; add those afterwards. Returns each created config's tpaConfigId — no need to list configs again to find it.
-- `items` *(required)*: `array<{method: enum(GET|POST|PUT|DELETE), name: string, operation: enum(QUERY|MUTATION), url: string}>`
+- `items` *(required)*: `array<{method: enum(GET|POST|PUT|DELETE), name: string, operation: enum(query|mutation), url: string}>`
 
 ### `UPDATE_TPA_CONFIG`
 
@@ -94,7 +100,7 @@ Update an endpoint's scalar config: name, url, description, method, operation, r
 - `description`: `string`
 - `method`: `enum(GET|POST|PUT|DELETE)`
 - `name`: `string`
-- `operation`: `enum(QUERY|MUTATION)`
+- `operation`: `enum(query|mutation)`
 - `requestContentType`: `string`
 - `tpaConfigId` *(required)*: `string`
 - `url`: `string`
@@ -119,7 +125,7 @@ Update a top-level request parameter (name, type, itemType, required, default va
 ### `ADD_TPA_RESPONSE_DATA`
 
 Set the root response-data shape for one response branch (SUCCESS / PERMANENT_FAIL / TEMPORARY_FAIL). Add nested fields afterwards with ADD_TPA_RESPONSE_DATA_CHILDREN.
-- `responseBranch` *(required)*: `enum(SUCCESS|PERMANENT_FAIL|TEMPORARY_FAIL)`
+- `responseBranch` *(required)*: `enum(2xx|4xx|5xx)`
 - `responseData` *(required)*: `{defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}`
 - `tpaConfigId` *(required)*: `string`
 
@@ -130,7 +136,7 @@ Update the root response-data node of a branch (name, type, itemType, required, 
 - `itemType`: `string`
 - `name`: `string`
 - `required`: `boolean`
-- `responseBranch` *(required)*: `enum(SUCCESS|PERMANENT_FAIL|TEMPORARY_FAIL)`
+- `responseBranch` *(required)*: `enum(2xx|4xx|5xx)`
 - `tpaConfigId` *(required)*: `string`
 - `type`: `string`
 

@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "zion-mcp@2.1.1",
+        "zion-mcp@2.1.2",
         "mcp"
       ]
     }

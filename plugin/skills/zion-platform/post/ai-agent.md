@@ -4,10 +4,10 @@
 A ZAI config is an LLM-backed agent the app runs via a "Run AI" action / action-flow node (asynchronous only). An agent has a name + description, a model, sampling settings (temperature, maxRound, max output tokens), a system + user **prompt**, and its **output**.
 
 ### Reading
-`GET_ALL_ZAI_CONFIG_INFOS` summarizes every agent; `GET_ZAI_CONFIG_DETAIL` returns one agent's full config — its input args (with their map keys), its prompt components each with the **schema path** of its text binding, and its output config.
+`GET_ZAI_MODEL_OPTIONS` returns the models currently selectable in this project. `GET_ALL_ZAI_CONFIG_INFOS` summarizes every agent; `GET_ZAI_CONFIG_DETAIL` returns one agent's full config — its input args (with their map keys), its prompt components each with the **schema path** of its text binding, its output config and structured-output fields, its database/API contexts (with the query schema paths for the request-filter tools), its knowledge base, and its callable tools.
 
 ### Creating & editing
-`ADD_ZAI_CONFIGS` seeds an agent with default empty system + user prompts and plain-text output; adding the first agent also provisions the AI conversation tables/relations/permissions. Edit scalar config (name, description, temperature, maxRound) with `UPDATE_ZAI_CONFIG`. The **model** is also set via `UPDATE_ZAI_CONFIG` — pass `customModelIdentifier` ({id, namespace}) with an id from the platform's supported-model descriptor (`supportedCustomModelDescriptor.chatModelDescriptors`, which lists each model's exact identifier and features such as vision / file support). Never fabricate an id; if you cannot obtain one, leave the model unset for the user to pick in the editor.
+`ADD_ZAI_CONFIGS` seeds an agent with default empty system + user prompts and plain-text output; adding the first agent also provisions the AI conversation tables/relations/permissions. Edit scalar config (name, description, temperature, maxRound) with `UPDATE_ZAI_CONFIG`. The **model** is required when creating an agent and can be changed via `UPDATE_ZAI_CONFIG`. Call `GET_ZAI_MODEL_OPTIONS` first. If the user did not name a model, choose the single selectable option whose `defaultModel` is true, matching the editor's default; otherwise choose a selectable model whose capabilities fit the request. Copy its exact `customModelIdentifier` ({id, namespace}). Never fabricate or omit the identifier.
 
 ### Prompts are bindings, not a ZAI tool
 A prompt's text is an ordinary data binding. Read its `valueSchemaPath` from `GET_ZAI_CONFIG_DETAIL` and edit it with the bindings plugin (the CREATE_*_BINDING tools) at that path — there is no ZAI prompt-edit tool.
@@ -19,43 +19,28 @@ Creating the first agent provisions four protected system tables that store agen
 - `message_content` — a single content block of a message: text or media, image / video / file (message → contents).
 - `tool_usage_record` — a record of one tool call made while producing a message, including any error (message → tool_calls).
 
-### Typed input args & output
+### Giving the agent context (what it can read)
+Beyond its prompt, an agent reads context — all shown by `GET_ZAI_CONFIG_DETAIL`:
+- **Database tables** — `ADD_ZAI_CONFIG_DB_CONTEXTS` (`UPDATE_ZAI_CONFIG_DB_CONTEXT` / `DELETE_ZAI_CONFIG_DB_CONTEXTS`). Each is a per-table query with column/relation selection; narrow which rows it sees by editing the query's `filters` with the request-filter tools at the `querySchemaPath` from `GET_ZAI_CONFIG_DETAIL`.
+- **Knowledge base** — existing knowledge-base files and retrieval settings are shown by `GET_ZAI_CONFIG_DETAIL`, but Copilot cannot mutate them. Ask the user to manage them in the editor.
+- **External APIs** — an external-API context; the tool is generation-specific (see the input-args section below).
 
-**Input args**: each input arg's `type` must be one of these scalar types — this is the complete
-set (copy the matching `typeIdentifier` from `GET_ZAI_CONFIG_SELECTABLE_TYPES`; never hand-build it):
-- text (string)
-- integer
-- decimal
-- boolean
-- date
-- time
-- date-time (timestamp)
-- image
-- video
-- file
-- geographic point
-- JSON
-An input arg can only be one of the scalar types above — do not pass `arrayLevel` (arrays) or
-pick a table / object / enum / union type; those are rejected.
-
-**Output**: an agent returns plain streamed text. A **structured (typed) output** is configured
-in the editor (there is no tool for it here): it is an object whose fields the user defines, where
-each field's type is one of:
-- text (string)
-- number
-- decimal
-- integer
-- boolean
-- date-time (timestamp)
-- time
-- date
-- object (a nested object with its own fields)
-- array (a list of any of the above except a nested array)
-When the user wants a typed agent output, either (a) ask them to configure the structured output
-in the editor with these field types and confirm before continuing, or (b) — fully via tools —
-keep **plain-text** output and pin the exact JSON shape in the **user prompt** (e.g. "Return ONLY
-JSON matching {...}"), then have the caller parse the returned text (stripping any ```json fences).
-Option (b) is the only no-editor path in the legacy type system.
+### Giving the agent tools (what it can call)
+`ADD_ZAI_CONFIG_TOOLS` lets the agent call action flows, external APIs, or other agents (`UPDATE_ZAI_CONFIG_TOOL` / `DELETE_ZAI_CONFIG_TOOLS`). The tool for tuning a callable tool's per-input descriptions is generation-specific (see the input-args section below).
+### Passing a list into a list-typed input arg
+To declare a list input, choose a base type from `GET_ZAI_CONFIG_SELECTABLE_TYPES` and set `arrayLevel: 1` (or `arrayLevel: 2` for a list of lists). Fill it where the agent is invoked. In the calling action flow's Run-AI node, bind it with an **array-mapping** formula at the input's schema path. The agent then runs once over the whole list.
+### Typed input args, output & context (refactored type system enabled)
+Declare typed inputs with `ADD_ZAI_CONFIG_INPUT_ARGS` (and `UPDATE_ZAI_CONFIG_INPUT_ARGS` / `DELETE_ZAI_CONFIG_INPUT_ARGS`). Each
+arg's `type` is a `typeIdentifier` copied verbatim from `GET_ZAI_CONFIG_SELECTABLE_TYPES` — primitives, tables,
+and custom object/enum types are all selectable; `arrayLevel` wraps it as a list (1) or list-of-lists
+(2), for any element type (a list of image is the common multi-image intake — see "Passing a list into
+an input arg" above). Configure output with `UPDATE_ZAI_CONFIG_OUTPUT`: `isStructured=false` for plain streamed text, or
+`isStructured=true` with an `outputType` (a `typeIdentifier` from `GET_ZAI_CONFIG_SELECTABLE_TYPES`) for a typed
+object — for a bespoke object shape, define the object type first with the type-system tools, then
+select its `typeIdentifier`.
+External-API context here is workspace HTTP APIs: `ADD_ZAI_CONFIG_API_CONTEXTS` (`UPDATE_ZAI_CONFIG_API_CONTEXT` /
+`DELETE_ZAI_CONFIG_API_CONTEXTS`). Tune a callable tool's per-input descriptions with
+`UPDATE_ZAI_CONFIG_TOOL_DESCRIPTION_CONFIGS`.
 
 ## How to drive it (CLI only)
 
@@ -85,13 +70,14 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 |---|---|---|
 | List agents | `GET_ALL_ZAI_CONFIG_INFOS` | — |
 | Agent detail (ids/paths) | `GET_ZAI_CONFIG_DETAIL` | `configId` |
-| Selectable I/O types | `GET_ZAI_CONFIG_SELECTABLE_TYPES` | — |
+| Selectable I/O types | `GET_ZAI_CONFIG_SELECTABLE_TYPES` | `slot` |
 | Create agents | `ADD_ZAI_CONFIGS` | `items` |
 | Update an agent | `UPDATE_ZAI_CONFIG` | `configId` |
 | Delete agents | `DELETE_ZAI_CONFIGS` | `configIds` |
 | Add input args | `ADD_ZAI_CONFIG_INPUT_ARGS` | `configId`, `items` |
 | Update input args | `UPDATE_ZAI_CONFIG_INPUT_ARGS` | `configId`, `items` |
 | Delete input args | `DELETE_ZAI_CONFIG_INPUT_ARGS` | `argKeys`, `configId` |
+| Update knowledge-base config | `UPDATE_ZAI_CONFIG_KNOWLEDGE_BASE` | — |
 | Set output config | `UPDATE_ZAI_CONFIG_OUTPUT` | `configId` |
 
 `ADD_ZAI_CONFIGS` seeds each agent with empty system + user prompt components and a plain-text
@@ -114,7 +100,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 ### `ADD_ZAI_CONFIGS`
 
 Create one or more AI agents. Each is seeded with default empty system + user prompts, no input args, and plain-text output; edit prompt text afterwards with the bindings plugin at the schema paths from GET_ZAI_CONFIG_DETAIL.
-- `items` *(required)*: `array<{customModelIdentifier?: object, name?: string}>` — AI agents to create. Each is seeded with the default system + user prompt components (empty text bindings, edit them via the data-binding tools at the schema paths from GET_ZAI_CONFIG_DETAIL), an empty input-arg set and a plain-text output config. Adding the first agent also provisions the AI conversation tables/relations/permissions if absent.
+- `items` *(required)*: `array<{customModelIdentifier: object, name?: string}>` — AI agents to create. Each is seeded with the default system + user prompt components (empty text bindings, edit them via the data-binding tools at the schema paths from GET_ZAI_CONFIG_DETAIL), an empty input-arg set and a plain-text output config. Adding the first agent also provisions the AI conversation tables/relations/permissions if absent.
 
 ### `UPDATE_ZAI_CONFIG`
 
@@ -130,13 +116,14 @@ Update an agent's scalar config: name, description, temperature, maxRound, or mo
 
 ### `ADD_ZAI_CONFIG_INPUT_ARGS`
 
-Add typed input arguments to an agent. Each arg's type is a typeIdentifier copied from GET_ZAI_CONFIG_SELECTABLE_TYPES. Works in both type-system modes: the refactored system allows arrays (arrayLevel), tables, and custom types; the legacy system accepts basic scalars only (no arrayLevel/arrays, tables, or objects).
+Add typed input arguments. Copy each base typeIdentifier from GET_ZAI_CONFIG_SELECTABLE_TYPES and use arrayLevel when a list or nested list is required.
 - `configId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, displayName: string, type?: string}>`
 
 ### `UPDATE_ZAI_CONFIG_OUTPUT`
 
 Configure the agent's output: plain streamed text (isStructured=false) or a structured typed object (isStructured=true with an outputType copied from GET_ZAI_CONFIG_SELECTABLE_TYPES).
+- `arrayLevel`: `integer` — Array nesting level for [outputType]; 1 = list, 2 = list of lists. Ignored when [outputType] is null.
 - `configId` *(required)*: `string` — The id of the AI agent whose output config to update.
 - `isStreaming`: `boolean` — Whether the plain-text output streams. Only meaningful when not structured.
 - `isStructured`: `boolean` — Whether the agent emits a structured (typed) output (true) or plain text (false). Switching to structured seeds `outputType` to string when none is given; switching to plain text drops the output type.

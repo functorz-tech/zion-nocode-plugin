@@ -1,6 +1,6 @@
 {
   "name": "zion-nocode",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "description": "Orientation and entry point for working on a Zion project. Load first for any Zion app task — designing or changing the data model, UI, server-side action flows, permissions, payments, or data bindings, or reading runtime logs — then follow it to the right capability. For Zion projects only; not generic programming help.",
   "author": {
     "name": "Zion"
@@ -13,7 +13,6 @@
     "app-builder"
   ],
   "skills": "./skills/",
-  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Zion no-code",
     "shortDescription": "Build and modify Zion apps.",

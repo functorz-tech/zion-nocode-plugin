@@ -12,6 +12,12 @@ A Third-Party API config is a saved external REST endpoint the project can call 
 ### Data types
 TPA fields use the TPA type set, independent of the project's type-system setting: TEXT, INTEGER, BIGINT, FLOAT8, DECIMAL, BOOLEAN, IMAGE, OBJECT, ARRAY. For an ARRAY give its `itemType`; for an OBJECT or ARRAY add the field shape with the `ADD_TPA_PARAMETER_CHILDREN` / `ADD_TPA_RESPONSE_DATA_CHILDREN` tools.
 
+### The request body is a single parameter
+The body is ONE root node, so a config may hold at most one `BODY` parameter — adding several top-level `BODY` params is rejected ("API cannot have more than one body param"). To send a JSON object body with several fields, add one `BODY` parameter of type `OBJECT` and put each field under it as a **child** via `ADD_TPA_PARAMETER_CHILDREN` (for a JSON array body use one `BODY` parameter of type `ARRAY`). The same holds for QUERY/PATH/HEADER: each is its own parameter, but only the body is capped at one.
+
+### An OBJECT / ARRAY node must be populated
+An `OBJECT` or `ARRAY` parameter (or response-data node) is invalid while empty — a bare `OBJECT` is rejected ("field does not have any inner fields"). Immediately after adding one, model its shape: add its fields with `ADD_TPA_PARAMETER_CHILDREN` / `ADD_TPA_RESPONSE_DATA_CHILDREN` (an `ARRAY` needs at least its element/`itemType` defined) before relying on the config.
+
 ### Workflow
 List configs with `GET_ALL_TPA_CONFIG_INFOS`, then `GET_TPA_CONFIG_DETAIL` to read a config's parameter and response `uniqueId`s — you pass these ids to the child tools. Create endpoints with `ADD_TPA_CONFIGS`; add request inputs with `ADD_TPA_CONFIG_PARAMETERS` (and `ADD_TPA_PARAMETER_CHILDREN` for object/array fields). Describe each response branch with `ADD_TPA_RESPONSE_DATA`, then `ADD_TPA_RESPONSE_DATA_CHILDREN` for nested fields. Configure list pagination with `SET_TPA_CONFIG_PAGING`. Editing a config creates a new version; "Sync Backend" is required for changes to take effect in production.
 
@@ -21,7 +27,7 @@ A bare root OBJECT set with `ADD_TPA_RESPONSE_DATA` is NOT a finished response: 
 ### Importing from an OpenAPI / Swagger spec
 To onboard an existing API, prefer `tpa import-from-openapi` over hand-building configs: pass the spec as a `url` (fetched server-side; internal/private addresses are blocked) or paste it as `specText` (JSON or YAML). It creates each operation as a full TPA endpoint — parameters, body, and success/fail response shape — in one call, capped at 25 endpoints (use `pathsFilter` to scope larger specs); a failed import is rolled back. If the spec declares no absolute server URL the imported configs get relative urls — fix each with `UPDATE_TPA_CONFIG` using the base URL from the documentation. When you only have a human-readable docs page, `tpa fetch-doc` retrieves it (SSRF-guarded) and lets you explore the documentation iteratively: follow the returned same-site `pageLinks`, keep reading long pages with `offset`, and watch `specLinks` for a machine-readable spec to import — all within a 15-fetch session budget. If no spec exists, author the configs with the granular tools above from what you read.
 
-> TPA works on every project generation (pre- and post-type-system-refactor) — it is the right integration surface when the post-only API-integration workspaces are unavailable.
+> Available only on **pre-type-system-refactor** projects. On post-refactor projects, use the API-integration workspace described in `api.md` instead.
 
 ## Importing from docs / OpenAPI (CLI)
 
@@ -78,6 +84,22 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Update a response child | `UPDATE_TPA_RESPONSE_DATA_CHILD` | `dataUniqueId`, `responseBranch`, `tpaConfigId` |
 | Delete response children | `DELETE_TPA_RESPONSE_DATA_CHILDREN` | `dataUniqueIds`, `responseBranch`, `tpaConfigId` |
 | Set paging | `SET_TPA_CONFIG_PAGING` | `tpaConfigId` |
+
+## Project secrets (API keys for auth headers)
+
+| Intent | `name` | Required `args` |
+|---|---|---|
+| List project secrets | `GET_ALL_SECRET_CONFIGS` | — |
+| Register secrets | `ADD_SECRET_CONFIGS` | `items` |
+| Update a secret | `UPDATE_SECRET_CONFIG` | `secretId` |
+| Delete secrets | `DELETE_SECRET_CONFIGS` | `secretIds` |
+
+Never write an API key as a parameter `defaultValue` or a literal binding — register it as a
+project secret and bind the auth header to it via the Secret option in the binding selector. Secret
+options are offered **only at server-side action-flow binding sites** (e.g. a Call API node's header
+slot; never page/component bindings) and only once at least one secret is registered. The plaintext
+never enters the schema: upload it out of band (backend `saveSecret` mutation) to get an opaque
+`secretKey` handle, then pass that handle to `ADD_SECRET_CONFIGS` / `UPDATE_SECRET_CONFIG`.
 
 A TPA config is an external HTTP/GraphQL integration usable as a project data source. Add the
 config (`ADD_TPA_CONFIGS`), then its request parameters and typed response data; nested object/array

@@ -14,8 +14,8 @@ Zion's payment system is built around a developer-owned **order table** plus a s
 The order table is a normal business table you create; the payment engine references one of its rows by its primary-key id (the `orderId` everywhere below). At minimum it needs:
 - an **amount/price** column — type `DECIMAL`, the authoritative price computed server-side.
 - a **status** column — model it as a `TEXT` column holding the lifecycle value (e.g.
-  `pending`, `paid`, `cancelled`, `refunded`); your fulfillment flow updates it. Enums are
-  not available without the refactored type system, so use TEXT here.
+  `pending`, `paid`, `cancelled`, `refunded`); your fulfillment flow updates it. Custom
+  enums are unavailable in this project, so use TEXT here.
 - a **buyer link** — do NOT add a raw `user_id`/`account_id` column. Create a 1:n RELATION from `account` to the order table so the buyer FK is generated automatically (the same manual-foreign-key rule the database plugin enforces). Add product/quantity links as relations too. Naming follows the usual rules: `snake_case` system names, no manual `id`/`created_at` columns (the runner mints the PK).
 
 **Irreversibility warning:** once the order table is linked to the payment module it CANNOT be unlinked, replaced, or deleted. Always confirm the table design with the user and warn them of this before they bind it. Choose the table deliberately.

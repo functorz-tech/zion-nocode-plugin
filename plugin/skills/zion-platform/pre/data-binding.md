@@ -5,6 +5,7 @@ Data binding connects data sources to UI components for display or interaction.
 
 ### Concepts
 Schema path: array of keys/indices locating a bindable node in the project JSON schema. Data binding options tree: hierarchical tree of all available data for a given schema path. Never hand-build a schema path for an action-flow node: copy it from the actionflow plugin's add_node result or get_flow_detail's nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments for the binding site inside the node (e.g. inputArgsDataBinding/<argName>, mutation/object/<columnName>).
+Type metadata in read results uses exact legacy ColumnType names such as `TEXT` and `BIGINT`; copy those names verbatim.
 
 ### Binding Kinds
 OPTION: bind to an existing path in the data binding options tree. pathInHierarchicalMenu must be the EXACT complete path: copy every label verbatim from the options tree attached to binding tool responses (or from a failure's available-options list) — never invent, translate, or shorten a label, and include every intermediate menu level. If the tree root is a named context (e.g., "List Context"), include it as the first element. CONST_VALUE: set a literal constant (e.g., "Submit", 0, false). FORMULA: compute a value with an operator (text / math / time / array / enum / geography / json groups); discover the available operators before building one. CONDITIONAL: choose the value by branch — define the branches, then build each branch's predicate. DISPLAY_NAME: rename a component's displayed title.
@@ -31,7 +32,7 @@ To change a numeric column RELATIVE to its current value (stock, counters, balan
 - Sort: `ADD_REQUEST_SORT_CONFIG` / `UPDATE_REQUEST_SORT_CONFIG` / `DELETE_REQUEST_SORT_CONFIG` / `REORDER_REQUEST_SORT_CONFIGS`.
 
 ### Composing text from fragments and variables
-For any TEXT value that mixes literal fragments with variables — AI prompt templates, titles, labels, messages — do NOT build a stringConcat formula. Append the pieces IN ORDER at the same schema path with operation CONCAT: `CREATE_CONST_BINDING` (operation CONCAT) for each literal fragment, `CREATE_OPTION_BINDING` (operation CONCAT) for each variable. This produces the same inline template the editor's text fields produce and stays editable there. Reserve formulas for real computation (math, time, regex, arrays) — never for simple text templating.
+For any `TEXT` value that mixes literal fragments with variables — AI prompt templates, titles, labels, messages — do NOT build a stringConcat formula. Append the pieces IN ORDER at the same schema path with operation CONCAT: `CREATE_CONST_BINDING` (operation CONCAT) for each literal fragment, `CREATE_OPTION_BINDING` (operation CONCAT) for each variable. This produces the same inline template the editor's text fields produce and stays editable there. Reserve formulas for real computation (math, time, regex, arrays) — never for simple text templating.
 
 ### Formula & Conditional Bindings
 A FORMULA or CONDITIONAL value is built in several steps at the value's schema path, not in a single call.
@@ -156,10 +157,10 @@ to address. Never hand-build paths.
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
 
 ### `GET_DATA_BINDING_OPTIONS`
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the target element, taken from a read tool's output (e.g. a conditionSchemaPath / checkSchemaPath from GET_ROLE_DETAIL, node and binding paths from the entity detail tools); never hand-built.
 
 ### `GET_DATA_BINDING_TYPE`
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the target element, taken from a read tool's output (e.g. a conditionSchemaPath / checkSchemaPath from GET_ROLE_DETAIL, node and binding paths from the entity detail tools); never hand-built.
 
 ### `CREATE_OPTION_BINDING`
 - `operation`: `enum(REPLACE|CONCAT)` — Specifies how to apply the data: 'REPLACE' overwrites the current value, 'CONCAT' appends to it. Default is 'REPLACE'.
@@ -209,23 +210,23 @@ Update a branch of a conditional binding (e.g. rename it) by its schema path.
 ### `INSERT_CONDITION_BOOL_EXP`
 
 Add a comparison to a branch's predicate at the given where-expression schema path. Returns the new comparison's conditionSchemaPath — copy it verbatim into UPDATE_EXPRESSION_CONDITION_OPERATOR and extend it with /target and /value for the operand bindings; never hand-build condition paths.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the target element, taken from a read tool's output (e.g. a conditionSchemaPath / checkSchemaPath from GET_ROLE_DETAIL, node and binding paths from the entity detail tools); never hand-built.
 
 ### `UPDATE_EXPRESSION_CONDITION_OPERATOR`
 
 Set the comparison operator of a condition at the given schema path (values from GET_EXPRESSION_CONDITION_OPERATORS).
-- `operator` *(required)*: `string`
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+- `operator` *(required)*: `string` — Operator wire name (e.g. '_eq', '_gt', '_in') — pick one returned by GET_EXPRESSION_CONDITION_OPERATORS for this condition.
+- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the condition whose operator to set, from a read tool's output.
 
 ### `GET_REQUEST_FILTER_CONTEXT`
 
 Inspect a request's filters before editing them. Call this first; never hand-build a filter or column path — copy the column paths and operators it returns verbatim. Pass the schema path of the query/mutation request, or of the action-flow query/mutation node that owns it (from GET_ACTION_FLOW_DETAIL). When the result says supportsConditionalFilters: false (an action-flow update/delete node has ONE bare where, not filter groups), only the where-condition tools apply — use the single entry's whereSchemaPath and skip the conditional-filter and sort tools. Insert nodes have no request filter.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the target element, taken from a read tool's output (e.g. a conditionSchemaPath / checkSchemaPath from GET_ROLE_DETAIL, node and binding paths from the entity detail tools); never hand-built.
 
 ### `ADD_REQUEST_CONDITIONAL_FILTER`
 
 Add a named conditional filter (a where + sort group gated by its own condition) to a request. The always-applied Default filter already exists; add more only for conditionally-applied filtering.
-- `afterId`: `string` — Insert the new filter right after the conditional filter with this id; inserts at the front when omitted.
+- `afterId`: `string` — Insert the new filter right after the conditional filter with this id; inserts at the front when omitted. Must reference a non-Default filter: the Default filter is always the last branch (its always-true condition would short-circuit any filter placed after it), so a new filter is always placed before the Default filter — passing the Default filter's id is rejected.
 - `name`: `string` — Display name for the new conditional filter; auto-generated when omitted.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the query/mutation request (or the action-flow query/mutation node that owns it). Get it from GET_REQUEST_FILTER_CONTEXT.
 

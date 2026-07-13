@@ -3,8 +3,8 @@
 自动生成 — 请勿手动编辑。技能内容由 `build_scripts/gen-skills.mjs` 生成，
 使用 `node build_scripts/gen-skills.mjs` 重新生成。
 
-`zion-platform` 技能会引导 Claude Code、Codex 或 Cursor 构建 Zion 项目（类型系统重构前的组合包），
-并路由到各能力子文档。同一组合包提供四份宿主清单 — `.claude-plugin/plugin.json`（Claude Code）、
+`zion-platform` 技能会引导 Claude Code、Codex 或 Cursor 构建 Zion 项目，自动检测当前项目的
+类型系统版本，并路由到相互隔离的对应能力目录。同一组合包提供四份宿主清单 — `.claude-plugin/plugin.json`（Claude Code）、
 `.codex-plugin/plugin.json`（Codex）、`.cursor-plugin/plugin.json`（Cursor）与
 `.qoder-plugin/plugin.json`（QoderWork） — 共享同一套 `skills/`、`hooks/` 与 `bin/`。Cursor 还会使用 `mcp.json` 中声明的 `zion` MCP 服务器；
 Claude Code 与 Codex 则忽略它，改为通过 bin 启动器调用 CLI。其 CLI 配方以绝对路径调用启动器
@@ -24,6 +24,18 @@ Claude Code 与 Codex 则忽略它，改为通过 bin 启动器调用 CLI。其 
 
     # Cursor（本地开发）— 建立符号链接，然后在 Cursor 的套件设置中启用
     ln -s "$PWD/plugin" ~/.cursor/plugins/local/zion-nocode
+
+## 验证项目路由
+
+在套件目录中单次加载项目，并检查返回的准确 `typeSystem`：
+
+    ./bin/zion-mcp --no-daemon schema load \
+      --args '{"projectExId":"<exId>"}' \
+      --pretty
+
+`schema load` 不直接接受 `--projectExId`。也可以先运行
+`./bin/zion-mcp project set-current --projectExId <exId>` 固定项目，再运行
+`./bin/zion-mcp schema load --pretty`。
 
 套件始终运行**已发布**的 npm CLI，因此本地对 CLI 的改动不会通过它生效。
 若要测试 CLI 本身，请直接运行（例如 `pnpm build && node bin/zion-mcp.js …`）。

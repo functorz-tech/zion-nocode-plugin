@@ -52,7 +52,8 @@ When interacting with user projects, remember the core architecture of Zion:
    - Page Variables hold page-lifecycle state; Client/Global Variables hold      application-wide state.
 3. **Action Layer (Logic Workflows & Actions):**
    - Actionflows execute server-side workflow trees containing conditions, loops, API and      database operations, delays, and returns.
-   - Security-sensitive logic, billing calculations, and state mutations should run in      Backend Actionflows rather than frontend event handlers.
+   - Simple single-table CRUD may run directly from the frontend when table, column, and row permissions fully express the authorization policy.
+   - Use Backend Actionflows for security-sensitive calculations and multi-step state transitions,      plus mutations that need server-held secrets, cross-table atomicity, or authorization      rules that data permissions cannot express.
 4. **Publish & Deploy Operations:**
    - "Sync Backend" applies schema models, relations, backend APIs, Actionflows, and      permission configuration to the deployed backend.
 

@@ -100,13 +100,13 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 ### `ADD_ZAI_CONFIGS`
 
 Create one or more AI agents. Each is seeded with default empty system + user prompts, no input args, and plain-text output; edit prompt text afterwards with the bindings plugin at the schema paths from GET_ZAI_CONFIG_DETAIL.
-- `items` *(required)*: `array<{customModelIdentifier: object, name?: string}>` — AI agents to create. Each is seeded with the default system + user prompt components (empty text bindings, edit them via the data-binding tools at the schema paths from GET_ZAI_CONFIG_DETAIL), an empty input-arg set and a plain-text output config. Adding the first agent also provisions the AI conversation tables/relations/permissions if absent.
+- `items` *(required)*: `array<{customModelIdentifier: object, name?: string}>` — AI agents to create. Each is seeded with the default system + user prompt components (empty text bindings, edit them via the CREATE_*_BINDING tools at the schema paths from GET_ZAI_CONFIG_DETAIL), an empty input-arg set and a plain-text output config. Adding the first agent also provisions the AI conversation tables/relations/permissions if absent.
 
 ### `UPDATE_ZAI_CONFIG`
 
 Update an agent's scalar config: name, description, temperature, maxRound, or model.
 - `configId` *(required)*: `string` — The id of the AI agent to update.
-- `customModelIdentifier`: `{id: string, namespace?: string}` — Model to use: the full model identifier ({ id, namespace }) as returned by the model-listing interface — pass it verbatim, never hand-build it. The deprecated `model` field is never written; selecting a model goes through this identifier.
+- `customModelIdentifier`: `{id: string, namespace?: string}` — Model to use: the full model identifier ({ id, namespace }) returned by GET_ZAI_MODEL_OPTIONS — pass it verbatim, never hand-build it. The deprecated `model` field is never written; selecting a model goes through this identifier.
 - `description`: `string` — New description.
 - `ignoreNullValuesFromContext`: `boolean` — Whether null values from the selected context are ignored.
 - `imageInputQuality`: `enum(LOW|HIGH)` — Image input quality: LOW or HIGH.

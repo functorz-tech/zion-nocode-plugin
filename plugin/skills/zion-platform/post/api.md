@@ -80,7 +80,7 @@ Add shared constants (base URLs, API keys, tokens) to a workspace; its APIs refe
 ### `ADD_APIS`
 
 Create one or more API endpoints (name, HTTP method, URL) under a workspaceId. Each is seeded with empty parameters / responses; add those afterwards.
-- `items` *(required)*: `array<{displayName: string, inputVariables?: array<object>, method: enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD), pagination?: object, responseConfigs?: array<object>, url: string, useAsData?: boolean, workspaceId: string}>`
+- `items` *(required)*: `array<{displayName: string, inputVariables?: array<object>, method: enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD), paginationEnabled?: boolean, responseConfigs?: array<object>, url: string, useAsData?: boolean, workspaceId: string}>`
 
 ### `UPDATE_API`
 
@@ -88,7 +88,7 @@ Update an endpoint's scalar config: name, method, URL, content type, or whether 
 - `apiId` *(required)*: `string`
 - `displayName`: `string`
 - `method`: `enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)`
-- `pagination`: `{pageIndexPath?: array<string>, pageIndexStartValue?: integer, pageSizePath?: array<string>}`
+- `paginationEnabled`: `boolean`
 - `url`: `string`
 - `useAsData`: `boolean`
 
@@ -96,7 +96,7 @@ Update an endpoint's scalar config: name, method, URL, content type, or whether 
 
 Add request parameters to an API. Each carries a position (path / query / header / body) and a type.
 - `apiId` *(required)*: `string`
-- `items` *(required)*: `array<object>`
+- `items` *(required)*: `array<object>` — Parameters to add. The item shape is chosen by `location`: QUERY/HEADER/FORM_BODY (and variable PATH segments) carry name + type, a constant PATH segment carries `value`, and JSON_BODY carries just the body type.
 
 ### `ADD_API_RESPONSE_CONFIGS`
 

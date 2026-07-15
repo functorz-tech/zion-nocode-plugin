@@ -145,8 +145,8 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `constraints` *(required)*: `array<{constraintName: string, tableDisplayName: string}>`
 
 ### `ADD_TABLE_EXTENSION`
-- `columnDisplayName` *(required)*: `string`
-- `customEmbeddingId`: `string`
+- `columnDisplayName` *(required)*: `string` — Display name of the TEXT column to build the embedding index on.
+- `customEmbeddingId`: `string` — Embedding model id (from GET_AVAILABLE_EMBEDDING_MODELS); the platform default when omitted.
 - `tableDisplayName` *(required)*: `string`
 
 ### `DELETE_TABLE_EXTENSION`

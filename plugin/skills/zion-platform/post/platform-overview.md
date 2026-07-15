@@ -94,9 +94,7 @@ Zion's canvas operates as a visual CSS rendering engine.
 ### 5.1 Frontend Actions
 Lightweight operations executing directly in the client browser/app. Triggered by UI events.
 
-**Direct database mutations**: The frontend can insert/update/delete rows directly, without routing through an Actionflow, **when both conditions hold**:
-1. No ACID requirement (a partial failure across operations is acceptable), and
-2. No trust concern (the user has no incentive to forge or tamper with the request — e.g., liking your own post, marking your own task done, incrementing a personal counter). When either condition fails (cross-table consistency needed, or a malicious client could exploit the operation), the mutation must go through a Backend Actionflow instead — see §6.
+**Prefer direct frontend CRUD**: The frontend can insert/update/delete rows directly for simple single-table CRUD when table, column, and row permissions fully express the authorization policy. Do not create an Actionflow merely to proxy CRUD. Reserve Backend Actionflows for genuinely server-side, multi-step, transactional, or orchestrated operations: cross-table atomicity, trusted calculations or secrets, branching or loops, third-party calls, schedules, webhooks, and database triggers. If data permissions cannot express the authorization rule, enforce it server-side in an Actionflow — see §6.
 
 **Other typical frontend actions**:
 * Navigation: push page, redirect, back, new tab, external link.
@@ -105,7 +103,7 @@ Lightweight operations executing directly in the client browser/app. Triggered b
 * Data refresh: Refresh (reload a remote data source), List Control (scroll-to / load-more).
 * File operations: upload (opens picker), download, clipboard copy, QR scan.
 * AI agent invocation: "Run AI" triggers a ZAI agent — returns streamed text or structured JSON; multi-turn via sessionId.
-* Trigger Actionflow: "Request – Actionflow" calls a backend flow with input params and receives its outputs; use this for CRUDs that require ACID or trust.
+* Trigger Actionflow: "Request – Actionflow" calls a backend flow with input params and receives its outputs; use this for server-only trust, cross-table ACID, or multi-step orchestration.
 * Auth: Login, Logout, SSO Login.
 * Payment: WeChat Pay / Alipay.
 
@@ -118,7 +116,7 @@ Server-side visual execution graphs used to perform robust operations. They are 
 
 **Node types available inside an Actionflow:** Database (query/insert/update/delete on a table), Call workspace API, Run AI (async only), Run Actionflow (sub-flow; sync cannot call async), Set Variable, Permissions (grant/revoke roles), Run Code (JavaScript), Condition (branching), Loop (iterate a list). Current-user and file/media operations are preset integration nodes, not built-in node types. The editor additionally offers a dynamic, server-managed catalog of **preset integration nodes** (the `TEMPLATE_CODE` node type — published templates such as SMS sending or video/AI generation) whose set changes over time, so confirm the current options in the editor or docs rather than assuming a fixed provider.
 
-**Execution modes**: Synchronous flows are ACID — any node failure rolls back all DB changes and the caller blocks waiting for the result. Asynchronous flows are fire-and- forget; only the failing node's DB changes roll back; required for AI agents and video generation. Both modes share a **per-flow total timeout** governed by `ACTION_FLOW_TIMEOUT_MILLISECONDS` — 15 s on free-tier servers, 10 min (600 s) on paid tiers. The budget is for the whole flow, not per node.
+**Execution modes**: In synchronous flows, all nodes in one synchronous Actionflow invocation execute inside a single database transaction; any node failure rolls back every DB write from that invocation, and the caller blocks waiting for the result. Asynchronous flows are fire-and-forget; only the failing node's DB changes roll back; required for AI agents and video generation. Both modes share a **per-flow total timeout** governed by `ACTION_FLOW_TIMEOUT_MILLISECONDS` — 15 s on free-tier servers, 10 min (600 s) on paid tiers. The budget is for the whole flow, not per node.
 
 ---
 

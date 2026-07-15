@@ -130,44 +130,44 @@ Update an endpoint's scalar config: name, url, description, method, operation, r
 ### `ADD_TPA_CONFIG_PARAMETERS`
 
 Add request parameters to a config. `items` maps each position (QUERY/PATH/HEADER/BODY) to exactly ONE parameter object — to add several parameters, call this tool once per parameter. Each carries a TPA data type; for OBJECT/ARRAY add the shape with ADD_TPA_PARAMETER_CHILDREN.
-- `items` *(required)*: `map<enum(BODY|HEADER|QUERY|PATH), {defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}>`
+- `items` *(required)*: `map<enum(BODY|HEADER|QUERY|PATH), {defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}>` — New request parameters keyed by their position: BODY, HEADER, QUERY or PATH. OBJECT (or array-of-OBJECT) parameters start empty — add their fields with ADD_TPA_PARAMETER_CHILDREN.
 - `tpaConfigId` *(required)*: `string`
 
 ### `UPDATE_TPA_CONFIG_PARAMETER`
 
 Update a top-level request parameter (name, type, itemType, required, default value). Read the parameter uniqueId from GET_TPA_CONFIG_DETAIL.
 - `defaultValue`: `string`
-- `itemType`: `string`
+- `itemType`: `string` — The array element type; required when [type] is ARRAY (same options except ARRAY itself).
 - `name`: `string`
-- `parameterUniqueId` *(required)*: `string`
+- `parameterUniqueId` *(required)*: `string` — uniqueId of the top-level parameter to update.
 - `required`: `boolean`
 - `tpaConfigId` *(required)*: `string`
-- `type`: `string`
+- `type`: `string` — Data type: TEXT, FLOAT8, INTEGER, BIGINT, DECIMAL, BOOLEAN, OBJECT, ARRAY or IMAGE.
 
 ### `ADD_TPA_RESPONSE_DATA`
 
 Set the root response-data shape for one response branch (SUCCESS / PERMANENT_FAIL / TEMPORARY_FAIL). Add nested fields afterwards with ADD_TPA_RESPONSE_DATA_CHILDREN.
 - `responseBranch` *(required)*: `enum(2xx|4xx|5xx)`
-- `responseData` *(required)*: `{defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}`
+- `responseData` *(required)*: `{defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}` — The response body's root node; an OBJECT root gets its fields via ADD_TPA_RESPONSE_DATA_CHILDREN.
 - `tpaConfigId` *(required)*: `string`
 
 ### `UPDATE_TPA_RESPONSE_DATA`
 
 Update the root response-data node of a branch (name, type, itemType, required, default value).
 - `defaultValue`: `string`
-- `itemType`: `string`
+- `itemType`: `string` — The array element type; required when [type] is ARRAY (same options except ARRAY itself).
 - `name`: `string`
 - `required`: `boolean`
 - `responseBranch` *(required)*: `enum(2xx|4xx|5xx)`
 - `tpaConfigId` *(required)*: `string`
-- `type`: `string`
+- `type`: `string` — Data type: TEXT, FLOAT8, INTEGER, BIGINT, DECIMAL, BOOLEAN, OBJECT, ARRAY or IMAGE.
 
 ### `SET_TPA_CONFIG_PAGING`
 
 Configure (or clear) pagination for a list endpoint.
-- `pageIndexPath`: `array<string>`
-- `pageIndexStartValue`: `integer`
-- `pageSizePath`: `array<string>`
+- `pageIndexPath`: `array<string>` — Parameter-name path (from the request root) to the page-index parameter.
+- `pageIndexStartValue`: `integer` — Index value of the first page; defaults to 0.
+- `pageSizePath`: `array<string>` — Parameter-name path (from the request root) to the page-size parameter.
 - `tpaConfigId` *(required)*: `string`
 
 Then ship:

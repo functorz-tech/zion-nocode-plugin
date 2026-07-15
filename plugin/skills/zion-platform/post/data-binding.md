@@ -4,11 +4,11 @@
 Data binding connects data sources to UI components for display or interaction.
 
 ### Concepts
-Schema path: array of keys/indices locating a bindable node in the project JSON schema. Data binding options tree: hierarchical tree of all available data for a given schema path. Never hand-build a schema path for an action-flow node: copy it from the actionflow plugin's add_node result or get_flow_detail's nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments for the binding site inside the node (e.g. inputArgsDataBinding/<argName>, mutation/object/<columnName>).
+Schema path: array of keys/indices locating a bindable node in the project JSON schema. Data binding options tree: hierarchical tree of all available data for a given schema path. Never hand-build a schema path for an action-flow node: copy it from the actionflow plugin's add_node result or get_flow_detail's nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments for the binding site inside the node. The binding-site key names VARY BY NODE TYPE (an AI node's input arg lives under inputArgs/<argKey>, a code node's under inputArgsDataBinding/<argName>, a mutation column under mutation/object/<columnName>) — copy the exact keys from the currentNode structure returned by get_context_info; never guess them.
 Type metadata in read results uses exact typeIdentifier values such as `s:p:string` and `u:e:<enumId>`; copy those values verbatim.
 
 ### Binding Kinds
-OPTION: bind to an existing path in the data binding options tree. pathInHierarchicalMenu must be the EXACT complete path: copy every label verbatim from the options tree attached to binding tool responses (or from a failure's available-options list) — never invent, translate, or shorten a label, and include every intermediate menu level. If the tree root is a named context (e.g., "List Context"), include it as the first element. CONST_VALUE: set a literal constant (e.g., "Submit", 0, false). FORMULA: compute a value with an operator (text / math / time / array / enum / geography / json groups); discover the available operators before building one. CONDITIONAL: choose the value by branch — define the branches, then build each branch's predicate. DISPLAY_NAME: rename a component's displayed title.
+OPTION: bind to an existing path in the data binding options tree. pathInHierarchicalMenu must be the EXACT complete path, and menu labels are locale-dependent display names (a project may render them in Chinese or English) — so a label can NEVER be guessed. Before the first option binding at a schema path whose tree you have not seen, read it with `GET_DATA_BINDING_OPTIONS`; afterwards every binding response attaches the refreshed tree for its op's path. Copy every label verbatim from that tree — never invent, translate, or shorten a label — and include every intermediate menu level. If the tree root is a named context (e.g., "List Context"), include it as the first element. CONST_VALUE: set a literal constant (e.g., "Submit", 0, false). FORMULA: compute a value with an operator (text / math / time / array / enum / geography / json groups); discover the available operators before building one. CONDITIONAL: choose the value by branch — define the branches, then build each branch's predicate. DISPLAY_NAME: rename a component's displayed title.
 
 ### Priority
 1. Prefer OPTION (live data) over CONST_VALUE.
@@ -176,9 +176,9 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 Create a formula binding at a schema path that computes a value with an operator (from GET_FORMULA_OPERATORS, copied verbatim — e.g. '-' not SUBTRACT); operation is REPLACE (set the value) or CONCAT (append). Some operators need a scalar config (e.g. distance unit, rounding mode) — discover its shape with GET_FORMULA_CONFIG_OPTIONS and pass it, or set it later with SET_FORMULA_CONFIG. The result returns formulaSchemaPath and operandSchemaPaths — fill each operand afterwards with a const/option binding tool at its returned path, copied verbatim; never derive an operand path yourself.
 - `config`: `object · kind: enum(GEO_DISTANCE|GEO_POINT_GET_VALUE|DECIMAL|NUMBER_FORMATTING|DURATION_FORMATTING|DURATION|TIME_GET_PART|TIME_OPERATION|GET_CURRENT_TIME|DATE_TIME_FORMATTING|RELATIVE_TIME) · per-kind: {language: enum(EN|ZH)} | {clearTrailingZeros: boolean, roundingMode: enum(HALF_EVEN|HALF_UP|HALF_DOWN|UP|DOWN|CEILING|FLOOR)} | {dateTimeUnit: enum(year|month|day|hour|minute|second|millisecond|weekday|week)} | {timeUnit: enum(day|hour|minute|second|millisecond)} | {unit: enum(METER|KILOMETER|MILE)} | {getValueType: enum(latitude|longitude)} | {timeType: enum(DATE|TIME|TIMESTAMP)} | {decimalPlaces?: integer, format: enum(THOUSANDS_SEPARATOR|PERCENT)} | {hideSuffix?: boolean, language: enum(EN|ZH)} | {direction: enum(later|before)}` — Optional non-databinding scalar config for the created formula (e.g. distance unit, rounding mode, time unit). The config kind must match the chosen operator, otherwise the call fails. Use GET_FORMULA_CONFIG_OPTIONS on an existing formula to discover the exact shape and the allowed values.
-- `operation`: `enum(REPLACE|CONCAT)`
-- `operator`: `enum(toText|toInteger|toDecimal|toDateTime|+|-|*|/|%|min|… 80 total)`
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+- `operation`: `enum(REPLACE|CONCAT)` — Specifies how to apply the data: 'REPLACE' overwrites the current value, 'CONCAT' appends to it. Default is 'REPLACE'.
+- `operator`: `enum(toText|toInteger|toDecimal|toDateTime|+|-|*|/|%|min|… 80 total)` — The formula operator — pick one returned by GET_FORMULA_OPERATORS at this path.
+- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The specific schema path in the project where the data binding is occurring.
 
 ### `SET_FORMULA_CONFIG`
 
@@ -189,22 +189,22 @@ Set the non-databinding scalar config of an existing formula (e.g. rounding mode
 ### `CREATE_CONDITIONAL_BINDING`
 
 Create a conditional binding at a schema path: a value chosen by the first branch whose predicate is true. initialBranchNames seeds the branches; operation is REPLACE or CONCAT. Add more branches with INSERT_CONDITIONAL_DATA, build each branch's predicate with the condition tools below, and fill each branch value with a binding tool.
-- `initialBranchNames`: `array<string>`
-- `operation`: `enum(REPLACE|CONCAT)`
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+- `initialBranchNames`: `array<string>` — Display names of the initial branches; two branches are created when omitted.
+- `operation`: `enum(REPLACE|CONCAT)` — Specifies how to apply the data: 'REPLACE' overwrites the current value, 'CONCAT' appends to it. Default is 'REPLACE'.
+- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The specific schema path in the project where the data binding is occurring.
 
 ### `INSERT_CONDITIONAL_DATA`
 
 Add a branch (a predicate plus the value it yields) to a conditional binding, after an existing branch id.
-- `afterId`: `string`
-- `conditionData`: `{condition?: object, name?: string, value?: object}`
+- `afterId`: `string` — Insert after the branch with this id; inserts at the front when omitted.
+- `conditionData`: `{condition?: object, name?: string, value?: object}` — Initial branch content; omitted parts default to an always-true condition, an empty value of the binding's type, and an auto-generated name.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
 
 ### `UPDATE_CONDITIONAL_DATA`
 
 Update a branch of a conditional binding (e.g. rename it) by its schema path.
 - `conditionData` *(required)*: `{condition?: object, name?: string, value?: object}`
-- `id` *(required)*: `string`
+- `id` *(required)*: `string` — Id of the branch to update.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
 
 ### `INSERT_CONDITION_BOOL_EXP`
@@ -248,7 +248,7 @@ Add a column where-condition to a conditional filter. Target the filter's whereS
 ### `UPDATE_REQUEST_FILTER_CONDITION_OPERATOR`
 
 Change the comparison operator of an existing column where-condition at the given schema path (same operator values as ADD_REQUEST_FILTER_CONDITION).
-- `operator` *(required)*: `string` — New comparison operator (see ADD_REQUEST_FILTER_CONDITION for the allowed values).
+- `operator` *(required)*: `string` — New comparison operator — pick from the column's `allowedOperators` in GET_REQUEST_FILTER_CONTEXT.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the column condition whose operator should change.
 
 ### `ADD_REQUEST_SORT_CONFIG`

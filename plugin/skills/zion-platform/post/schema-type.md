@@ -90,7 +90,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `types` *(required)*: `array<{description?: string, displayName: string, id: string, private?: boolean, properties: array<object>}>`
 
 ### `UPDATE_OBJECT_TYPE_DEFINITIONS`
-- `types` *(required)*: `map<string, {description?: string, displayName?: string, private?: boolean}>`
+- `types` *(required)*: `map<string, {description?: string, displayName?: string, private?: boolean}>` — Map of object type id to the fields to update (null fields are unchanged).
 
 ### `ADD_TYPE_DEFINITION_FIELDS`
 - `fields` *(required)*: `array<{arrayLevel?: integer, name: string, required?: boolean, type: string}>`

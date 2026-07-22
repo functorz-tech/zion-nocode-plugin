@@ -1,0 +1,34 @@
+{
+  "name": "zion-nocode",
+  "version": "2.1.6",
+  "description": "Orientation and entry point for working on a Zion project. Load first for any Zion app task — designing or changing the data model, UI, server-side action flows, permissions, payments, or data bindings, or reading runtime logs — then follow it to the right capability. For Zion projects only; not generic programming help.",
+  "author": "Zion",
+  "homepage": "https://github.com/functorz-tech/zion-nocode-plugin",
+  "keywords": [
+    "zion",
+    "no-code",
+    "mcp",
+    "app-builder"
+  ],
+  "interface": {
+    "displayName": "Zion no-code",
+    "shortDescription": "Build and modify Zion apps.",
+    "longDescription": "Zion-specific guidance and CLI recipes for the data model, UI components, data bindings, server-side action flows, payments, permissions, and runtime logs.",
+    "developerName": "Zion",
+    "websiteURL": "https://github.com/functorz-tech/zion-nocode-plugin"
+  },
+  "skills": "./skills/",
+  "sessionStart": {
+    "skill": "zion-platform"
+  },
+  "mcpServers": {
+    "zion": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "zion-mcp@2.1.6",
+        "mcp"
+      ]
+    }
+  }
+}

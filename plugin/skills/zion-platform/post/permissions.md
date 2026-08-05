@@ -1,108 +1,106 @@
 # Permissions (RBAC + ABAC)
 
 ## Permission System Domain Knowledge
-Zion uses RBAC (Role-Based Access Control) combined with ABAC (Attribute-Based Access Control) to secure data and actions. Permission configuration changes require "Sync Backend" to take effect.
+Zion secures data and actions with RBAC (roles) plus ABAC (per-row conditions). Every tool in this plugin edits the project schema only — the change reaches the deployed backend when "Sync Backend" runs, which is the last step of any permission task.
 
-### Core Concepts
-Role: a named collection of users. A user can have multiple roles; their effective permissions are the union of all roles' permissions. Data Permission: controls what a role can read or write in the database at table, column, and row level. Action Permission: controls which APIs, Actionflows, AI agents, and payment operations a role can invoke.
+### Model
+- **Role**: a named collection of users. Two are predefined and cannot be renamed or deleted: **Logged-in User** (held by every authenticated user) and **Anonymous User** (unauthenticated requests). Custom roles can then be created, renamed, and deleted, up to the project's role limit.
+- **Data Permission**: what a role may read or write, at table, column and row level.
+- **Action Permission**: which workspace HTTP APIs, Actionflows, AI agents and payment operations a role may invoke.
+- Each action block is allow-all or an explicit allow-list. On top of those grants, per-target conditional checks are available for Actionflows and AI agents; payments take allow-all or a payment-type/billing-method map.
+- **Roles only ever add.** A user's effective permissions are the union of every role they hold; a restrictive role never subtracts what a permissive one granted. To take access away, narrow or unassign the permissive role — never "add a limited role".
 
-### Activation and Predefined Roles
-Always call `GET_ALL_ROLE_INFOS` before editing roles. When it reports that role permission is not activated:
-- In BUILD or AUTO_ACCEPT mode, you MUST immediately call   `ACTIVATE_ROLE_PERMISSION`. BUILD uses the normal user-confirmation gate; AUTO_ACCEPT   applies it immediately.
-- In RESEARCH mode, do not attempt a mutation; tell the user to look into permissions in   Settings → Permission.
+### Activate first
+Always call `GET_ALL_ROLES_INFO` before editing roles. When it reports that role permission is not activated:
+- In BUILD or AUTO_ACCEPT mode, you MUST immediately call `ACTIVATE_ROLE_PERMISSION`, which seeds the predefined roles. BUILD uses the normal user-confirmation gate; AUTO_ACCEPT applies it immediately.
+- In RESEARCH mode, do not attempt a mutation; tell the user to look into permissions in 设置 → 权限管理.
 
-`ACTIVATE_ROLE_PERMISSION` seeds the predefined roles in the project schema. Like every permission configuration change, it requires "Sync Backend" to affect the deployed backend.
+### Grant
+Data permissions are configured coarse → fine:
+1. **Table**: which operations (select / insert / update / delete / count / aggregate) the role may run.
+2. **Column**: which fields each operation covers.
+3. **Row**: a per-operation condition — a filter over existing rows for select, update and delete, a check on the incoming row for insert. Each one starts always-true, so a fresh grant is open until narrowed.
 
-After activation, these predefined roles exist and cannot be renamed or deleted:
-- Logged-in User: automatically assigned to every authenticated user.
-- Anonymous User: applies to unauthenticated users. Custom roles can then be created, renamed, and deleted with the permission tools, subject to the project's role limit.
+Read before writing: `GET_ALL_ROLES_INFO`, then `GET_ROLE_DETAIL` for one role's grants, the schema path of each operation's row condition, and its `hasCustomCondition` flag. Edit with `ADD_ROLES`, `UPDATE_ROLE`, `DELETE_ROLES` and the per-block setters `UPDATE_ROLE_TABLE_PERMISSION`, `UPDATE_ROLE_ACTION_FLOW_PERMISSION`, `UPDATE_ROLE_ZAI_PERMISSION`, `UPDATE_ROLE_PAYMENT_PERMISSION`, `UPDATE_ROLE_API_PERMISSION` for workspace HTTP APIs. Account insert/delete is unavailable, and `id` is pinned into every table SELECT grant.
 
-### Data Permissions (three levels, configured coarse → fine)
-1. Table-level: CRUD access + aggregate queries (count, sum, avg) for the entire table.
-2. Column-level: CRUD access per field — field-level security.
-3. Row-level: conditional filter rules evaluated at query time — e.g., "user can only update orders they created" (ABAC). Configured as "Advanced Filtering" on the table op.
+`allowAll` on `apiPermission`, `actionflowPermission` or `zAiPermission` also covers resources added later — prefer explicit allow-lists unless broad access is intentional.
 
-### Action Permissions
-Covers: workspace HTTP APIs, Actionflows, AI agents, and payment operations. Resource grants use either allow-all or an explicit allow-list. On top of those grants, per-target conditional checks are available for Actionflows and AI agents. Payment permissions use either allow-all or an explicit payment-type/billing-method map.
+**Role, or a field on Account?** Use a role for static functional boundaries: who may run a flow, read a table, see a column. Add a field on the Account table for per-user state: VIP status, nickname, bio.
 
-### Role Assignment
-- Manual: assign in the Permission Management UI.
-- Automatic: use the Permissions node inside an Actionflow (e.g., grant VIP role after purchase). Actionflow-based role grants/revocations take effect immediately — no backend sync required.
+**Never create one role per group.** For departments, stores, tenants or any other segmentation, use the relation-first pattern: create a `1:n` relation from the context table (e.g. `department`) to `Account`, and a second one from that same table to the business table (e.g. `sales_record`). Both foreign-key columns are generated and non-editable — never declare them as raw integer fields. Then define one generic role (`Sales_Staff`) and compare those two columns in its row conditions.
 
-### Troubleshooting Permission Errors
-403 errors surface in runtime logs and client responses: ```json { "errorCode": 403, "extensions": { "classification": "TABLE_ACCESS" }, "message": "User 1 has no permission for SELECT on order" } ``` "User 1" means the user whose numeric ID ends in 1 (internal ID = 1000000000000001). Diagnostic steps:
-1. Confirm the user has been assigned the correct role.
-2. Verify the role's table/column/row permission configuration in Settings.
-3. Confirm "Sync Backend" was run after the last permission config change.
+Simple single-table CRUD may run directly from the frontend when table, column, and row permissions fully express the authorization policy — do not wrap it in an Actionflow. Reach for a Backend Actionflow only when the rule cannot be expressed that way at all: it needs server-held secrets, cross-table atomicity, or multi-step state transitions.
 
-### Least-Privilege Review Rules
-- `allowAll` on `apiPermission`, `actionflowPermission`, or `zAiPermission` allows   every resource in that block, including resources added later. Prefer explicit allow-lists   unless broad access is intentional.
-- Effective permissions are the union of all assigned roles. A restrictive role does not   subtract grants supplied by a more permissive role.
-- Newly granted table operations start with an always-true row condition. Narrow the   returned condition path before syncing whenever access should be row-scoped.
-- A newly created custom role starts with the ztype-defined defaults: minimal table grants,   empty Actionflow and API allow-lists, all AI agents allowed, and default payment access.   Inspect and narrow those defaults for the project's policy.
+### Row conditions (ABAC)
+Narrowing those conditions is a two-plugin job: this plugin has no tool that edits one — they live in the **bindings** plugin, so you must `load_plugin(["bindings"])` to finish. The check `SET_ROLE_PERMISSION_CHECK` seeds for an Actionflow or AI agent works the same way.
 
-### High-Level Business Logic & Core Architecture
-When interacting with user projects, remember the core architecture of Zion:
+Each operation has its own condition node and its own row branch to compare against, so reusing the select recipe on another op fails:
+- `select` → path ends `/select/filter` → the branch holding the row being read
+- `insert` → path ends `/insert/check`, not `filter` → the branch holding the row being inserted
+- `update` → path ends `/update/filter` → the branch holding the row as stored, or the one holding the incoming values
+- `delete` → path ends `/delete/filter` → the branch holding the row being deleted
+- `count` / `aggregate` → no row branch exists, only the logged-in user and the current time, so they cannot be row-scoped. Whenever you narrow `select`, send `count` and `aggregate` `{enabled: false}` too, unless a whole-table count is meant to be public: a row-scoped `select` beside an open `count` still tells any user how many rows everyone else has.
 
-1. **Design Layer (UI & Visual Layout):**
-   - UI components on the canvas use a Flexbox-based layout model and Relative, Absolute,      or Fixed position types. Breakpoints control responsive design.
-2. **Data Layer (PostgreSQL & Application State):**
-   - Powered by a relational database schema. Tables use `snake_case` names for columns and      fields (e.g., `user_id`, `created_at`).
-   - Dynamic query results bind directly to UI layouts through hierarchical data bindings      and visual formulas.
-   - Page Variables hold page-lifecycle state; Client/Global Variables hold      application-wide state.
-3. **Action Layer (Logic Workflows & Actions):**
-   - Actionflows execute server-side workflow trees containing conditions, loops, API and      database operations, delays, and returns.
-   - Simple single-table CRUD may run directly from the frontend when table, column, and row permissions fully express the authorization policy.
-   - Use Backend Actionflows for security-sensitive calculations and multi-step state transitions,      plus mutations that need server-held secrets, cross-table atomicity, or authorization      rules that data permissions cannot express.
-4. **Publish & Deploy Operations:**
-   - "Sync Backend" applies schema models, relations, backend APIs, Actionflows, and      permission configuration to the deployed backend.
+Narrowing one condition:
+1. `GET_ROLE_DETAIL` (or the result of `SET_ROLE_PERMISSION_CHECK`) → that operation's condition schema path.
+2. `INSERT_CONDITION_BOOL_EXP` at that path → returns a `conditionSchemaPath`. Copy it verbatim; never hand-build one.
+3. `GET_EXPRESSION_CONDITION_OPERATORS` at that path, then `UPDATE_EXPRESSION_CONDITION_OPERATOR` with an operator copied verbatim. The `target` and `value` operand slots do not exist until the operator is set — binding first fails with "Cannot find type definition under path …".
+4. Fill both operands at `<conditionSchemaPath>/target` and `<conditionSchemaPath>/value`, addressed by `pathInHierarchicalMenu`. Read that path — branch label included — from `BROWSE_DATA_BINDING_OPTIONS` at the operand's own schema path and copy it verbatim; never hand-build one. Relations traverse, so a child table can compare against its parent's owner — that path is four segments deep: context root, row branch, relation, column. Every segment is a label from the tree, including the root.
+5. Delete the always-true placeholder the grant started with: `DELETE_CONDITION_BOOL_EXP` at `<path>/_and/[0]`. Harmless at runtime, but the editor renders it as an empty condition row, so the user sees a half-configured rule.
+6. Shape multi-clause predicates with `NEST_CONDITION_BOOL_EXP`, `TOGGLE_CONDITION_BOOL_EXP_AND_OR`, `TOGGLE_CONDITION_BOOL_EXP_NOT`.
+7. Sync Backend.
 
-### Architectural Guidance: Roles vs. Account Fields (RBAC vs. ABAC)
-When users ask whether to create a Permission Role or add a field on the Account table, guide them with these principles:
+Example — "a staff member only ever touches their own department's sales records" — after granting `Sales_Staff` select, insert, update and delete on `sales_record`, configure four conditions, each comparing that operation's own row branch `department_id` against the logged-in user's `department_id`. Configuring only select leaves the writes unrestricted.
 
-1. Use a Permission System Role when defining static functional boundaries:
-   - Controls overall capability (e.g., "Only AdminRole can run DeleteAccountActionFlow").
-   - Restricts database tables (e.g., "Only FinanceRole can SELECT Transactions").
-   - Implements column-level security (e.g., "Only HRRole can see the salary column").
+A batch of tool calls is all-or-nothing: one bad call discards every change in that batch. Send exploratory reads on their own — especially the first `BROWSE_DATA_BINDING_OPTIONS` for an operation whose context branch you have not seen — then batch the writes.
 
-2. Add a Field on the Account table when representing user-specific states:
-   - Holds unique attributes (e.g., VIP status, user status, nickname, bio).
+### Assign the role
+A custom role does nothing until an account holds it. Two ways:
+- Manual: assign in the editor, under 设置 → 权限管理.
+- Automatic: the Permissions node inside an Actionflow (e.g. grant VIP after purchase). These grants and revocations take effect immediately — no backend sync required.
 
-3. Use a Hybrid Model (Dynamic Filtering) to prevent "Role Explosion" for groups:
-   - NEVER create separate roles for every department or store.
-   - Instead, use the **Relation-First Pattern**:
-     - Create a `1:n` relation from the context table (e.g., `department`) to `Account`;        this generates the non-editable `department_id` foreign-key column.
-     - Create a `1:n` relation from the same context table to the business table (e.g.,        `sales_record`); this generates the matching foreign-key column.
-   - Define one generic role (`Sales_Staff`) and configure a Row-Level Security filter      using the generated foreign-key columns:    Table.department_id == Account.department_id
-   - Never manually declare foreign-key columns as raw integer fields; create relations.
+### Definition of done
+A permission task is finished only when all of these hold. Check them before reporting:
+1. Every operation you enabled shows `hasCustomCondition: true` in `GET_ROLE_DETAIL`, or is deliberately open.
+2. `GET_ROLE_DETAIL` on **Anonymous User** shows no unintended grant on the tables you touched. A newly created table lands in that role automatically: observed on a deployed project, an unauthenticated request could read every row, and after only SELECT was revoked it could still INSERT.
+3. Any custom role you created is actually assigned to someone.
+4. "Sync Backend" has run.
+If you stop short of any of these, say so explicitly and name which grants are still open. Never report the permission work as complete.
 
-### Editing roles with tools
-Roles ARE editable via tools after initial activation. Read first: `GET_ALL_ROLE_INFOS` lists every role; `GET_ROLE_DETAIL` returns one role's grants and the schema paths of its row conditions.
-- Role CRUD: `ADD_ROLES`, `UPDATE_ROLE`, `DELETE_ROLES`. Custom roles can be   renamed; predefined roles cannot be renamed or deleted.
-- Per-block grants: `UPDATE_ROLE_TABLE_PERMISSION`, `UPDATE_ROLE_ACTION_FLOW_PERMISSION`,   `UPDATE_ROLE_ZAI_PERMISSION`, `UPDATE_ROLE_PAYMENT_PERMISSION`, and `UPDATE_ROLE_API_PERMISSION` for workspace HTTP APIs. Account   insert/delete is unavailable, and `id` is pinned into table SELECT grants.
-- Row conditions (ABAC): a newly granted table op gets an always-true row condition;   `SET_ROLE_PERMISSION_CHECK` seeds an always-true check for one Actionflow or AI agent.   Narrow conditions with the condition tools at the schema paths returned by   `GET_ROLE_DETAIL` or `SET_ROLE_PERMISSION_CHECK`.
-Permission configuration changes require "Sync Backend" to take effect.
+### Troubleshooting 403
+403s surface in runtime logs and client responses:
+```json
+{
+  "errorCode": 403,
+  "extensions": { "classification": "TABLE_ACCESS" },
+  "message": "User 1 has no permission for SELECT on order"
+}
+```
+"User 1" is the user whose internal id ends in 1 (1000000000000001). Then:
+1. Confirm the user holds the role you expect.
+2. Read that role with `GET_ROLE_DETAIL`: is the operation enabled, is the column inside its grant, and does its row condition match the row the user expected?
+3. Confirm "Sync Backend" ran after the last permission change.
 
 > Role permission (RBAC) must already be **activated** on the project — activation itself is editor-only (Settings → Permission Management) and every op below fails until then. Design the role + relation model first: for data isolation, model the one-to-many relations the row-level filters compare with `schema-table.md`; for 403 debugging, see `runtime-logs.md`.
 
 ## How to drive it (CLI only)
 
-All commands are `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
+npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
+npx -y zion-mcp@2.3.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
+npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -111,7 +109,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 | Intent | `name` | Required `args` |
 |---|---|---|
-| List roles | `GET_ALL_ROLE_INFOS` | — |
+| List roles | `GET_ALL_ROLES_INFO` | — |
 | Role detail (grants + condition paths) | `GET_ROLE_DETAIL` | `roleId` |
 | Create roles (minimal grants) | `ADD_ROLES` | `items` |
 | Rename a role | `UPDATE_ROLE` | `roleId` |
@@ -133,24 +131,24 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 ### `ADD_ROLES`
 
-Create custom roles with the editor's minimal-grant defaults (extend them with the set_*_permission tools). If GET_ALL_ROLE_INFOS reports "not activated", call ACTIVATE_ROLE_PERMISSION first.
-- `items` *(required)*: `array<{description?: string, name: string}>` — Custom roles to create. A new role starts with no table operations granted (except the account table's basic profile read/update), empty action-flow and API allow-lists, all AI agents allowed and the default payment permission — grant more via the UPDATE_ROLE_*_PERMISSION tools. Requires role permission (RBAC) to already be activated: when GET_ALL_ROLE_INFOS reports that it is not activated, call ACTIVATE_ROLE_PERMISSION first.
+Create custom roles with the editor's minimal-grant defaults (extend them with the set_*_permission tools). If GET_ALL_ROLES_INFO reports "not activated", call ACTIVATE_ROLE_PERMISSION first.
+- `items` *(required)*: `array<{description?: string, name: string}>` — Custom roles to create. A new role starts with no table operations granted (except the account table's basic profile read/update), empty action-flow and API allow-lists, all AI agents allowed and the default payment permission — grant more via the UPDATE_ROLE_*_PERMISSION tools. Requires role permission (RBAC) to already be activated: when GET_ALL_ROLES_INFO reports that it is not activated, call ACTIVATE_ROLE_PERMISSION first.
 
 ### `UPDATE_ROLE_TABLE_PERMISSION`
 
-Grant or revoke one role's operations on one table, with per-operation column sets. Newly granted operations get an always-true row condition — narrow it via the condition tools at the schema paths from GET_ROLE_DETAIL.
-- `aggregate`: `{columns?: array<string>, enabled?: boolean}` — Aggregation permission; only numeric columns can be granted.
+Grant or revoke one role's operations on one table, with per-operation column sets. `tableDisplayName` is the display name from the database plugin's read tools, not the snake_case table name. `count` and `aggregate` cannot be row-scoped, so disable them whenever select is.
+- `aggregate`: `{columns?: array<string>, enabled?: boolean}` — Aggregation permission; only numeric columns are grantable, others are dropped from the column set.
 - `count`: `{columns?: array<string>, enabled?: boolean}` — Row-count permission (row-level; takes no columns).
 - `delete`: `{columns?: array<string>, enabled?: boolean}` — Row-delete permission (row-level; takes no columns). Not available on the account table.
-- `insert`: `{columns?: array<string>, enabled?: boolean}` — Row-insert permission. Not available on the account table. Auto-generated columns (serial ids, created_at/updated_at, formula columns) cannot be granted.
+- `insert`: `{columns?: array<string>, enabled?: boolean}` — Row-insert permission. Not available on the account table. Auto-generated columns (serial ids, created_at/updated_at, formula columns) are not grantable and are dropped from the column set.
 - `roleId` *(required)*: `string` — The uuid of the role whose table permission to change.
 - `select`: `{columns?: array<string>, enabled?: boolean}` — Row-read permission. Newly granted operations get an always-true row condition; narrow it via the condition tools at the schema paths from GET_ROLE_DETAIL.
 - `tableDisplayName` *(required)*: `string` — Display name of the table (from GET_ALL_TABLE_DISPLAY_NAMES).
-- `update`: `{columns?: array<string>, enabled?: boolean}` — Row-update permission. Auto-generated columns (serial ids, created_at/updated_at, formula columns) cannot be granted.
+- `update`: `{columns?: array<string>, enabled?: boolean}` — Row-update permission. Auto-generated columns (serial ids, created_at/updated_at, formula columns) are not grantable and are dropped from the column set.
 
 ### `SET_ROLE_PERMISSION_CHECK`
 
-Seed (or reset) a role's conditional check on one action flow / AI agent: writes an always-true condition and returns its schema path — then narrow it via the condition tools at that path. The check gates calls to the target on top of the allow-list.
+Seed a role's conditional check on one action flow / AI agent, on top of the allow-list: writes an always-true condition and returns its schema path, so it gates nothing until narrowed. Calling it again for the same target resets the check back to always-true.
 - `category` *(required)*: `enum(ACTION_FLOW|ZAI)` — Which permission block the check gates: ACTION_FLOW or ZAI.
 - `roleId` *(required)*: `string` — The uuid of the role the check belongs to.
 - `targetId` *(required)*: `string` — The action-flow id / AI-agent config id the check applies to. The check gates calls to that target for this role on top of the allow-list. This tool seeds the target's check as an always-true condition and returns its checkSchemaPath — narrow the condition via the condition tools (INSERT_CONDITION_BOOL_EXP etc.) at that path. Calling it again for the same target resets the check back to always-true.
@@ -158,6 +156,6 @@ Seed (or reset) a role's conditional check on one action flow / AI agent: writes
 Then ship:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema validate && "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project sync-backend
+npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

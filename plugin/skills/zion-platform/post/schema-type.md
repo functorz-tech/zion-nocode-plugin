@@ -21,28 +21,38 @@ Editing in place is destructive: renaming or deleting an option or enum changes/
 If a column should use a new enum, create the enum here first (in the same turn, before the column), so the column can resolve its type by the enum's id (its name).
 
 ### Custom Objects
-Custom object types are not yet editable from here. type.list_objects returns the current set (currently empty).
+Custom object types are named, reusable structured types (a set of typed fields), referenced elsewhere by the identifier `u:o:<typeId>` (action-flow inputs/outputs, other types' fields, and other type slots).
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema status` → `typeSystem`.
+Operations:
+- `list_objects`: list object types with their fields. Always call it before editing — edits are rejected until the target type has been read.
+- `create_object_types`: create object types. Each item takes a caller-supplied unique short id (lowercase alphanumeric, e.g. "mja44si4"), a displayName, and its initial fields.
+- `update_object_types`: update a type's own displayName / description / private flag only (omitted fields are unchanged).
+- `add_object_type_fields` / `delete_object_type_fields`: add or remove fields of an existing type.
+
+Field types are TypeIdentifier strings: `s:p:<primitive>` (string, bigint, decimal, boolean, timestamptz, timetz, date, jsonb, image, video, file, geo_point), or `u:o:<typeId>` / `u:e:<enumId>` to nest an object or enum type; a field's arrayLevel makes it a list (1) or list of lists (2).
+
+There is no field-level update: renaming or retyping a field means delete + re-add, which breaks anything bound to the old field — check usages and warn the user first. Deleting a type that is still referenced breaks those references the same way.
+
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.3.0 schema status` → `typeSystem`.
 
 ## How to drive it (CLI only)
 
-All commands are `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
+npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
+npx -y zion-mcp@2.3.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
+npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -65,7 +75,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 ## Worked example: an OrderStatus enum
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[
+npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[
   {"name":"ADD_ENUM_DEFINITIONS","args":{"enums":[
     {"name":"OrderStatus","displayName":"OrderStatus","options":[
       {"value":"PENDING","displayName":"PENDING"},
@@ -81,24 +91,24 @@ Create the enum **before** any column that references it (by its PascalCase id).
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
 
 ### `ADD_ENUM_DEFINITIONS`
-- `enums` *(required)*: `array<{displayName: string, id: string, options: array<object>}>`
+- `enums` *(required)*: `array<{displayName: string, groupId?: string, id: string, options: array<object>}>`
 
 ### `UPDATE_ENUM_DEFINITIONS`
 - `enums` *(required)*: `map<string, {displayName?: string, options?: array<object>}>` — Map of enum ID to the fields to update
 
 ### `ADD_OBJECT_TYPE_DEFINITIONS`
-- `types` *(required)*: `array<{description?: string, displayName: string, id: string, private?: boolean, properties: array<object>}>`
+- `types` *(required)*: `array<{description?: string, displayName?: string, groupId?: string, id: string, private?: boolean, properties: array<object>}>`
 
 ### `UPDATE_OBJECT_TYPE_DEFINITIONS`
 - `types` *(required)*: `map<string, {description?: string, displayName?: string, private?: boolean}>` — Map of object type id to the fields to update (null fields are unchanged).
 
 ### `ADD_TYPE_DEFINITION_FIELDS`
-- `fields` *(required)*: `array<{arrayLevel?: integer, name: string, required?: boolean, type: string}>`
+- `fields` *(required)*: `array<{name: string, required?: boolean, type: string}>`
 - `typeId` *(required)*: `string`
 
 Then ship:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema validate && "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project sync-backend
+npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

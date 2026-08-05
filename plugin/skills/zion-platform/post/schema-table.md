@@ -13,7 +13,7 @@ You CANNOT:
 
 ### Column Types
 A column's 'type' is one exact, unwrapped type identifier (case-sensitive).
-Primitive identifiers: s:p:string, s:p:decimal, s:p:bigint, s:p:boolean, s:p:timestamptz, s:p:timetz, s:p:date, s:p:jsonb, s:p:image, s:p:video, s:p:file, s:p:geo_point.
+Primitive identifiers: {{primitiveTypeIdentifiers}}.
 For an existing enum, use "u:e:<enumId>", where <enumId> is the actual id returned by
 type.list_enums. For an enum created in the same change set, use "u:e:<enumName>" until
 the editor assigns its id.
@@ -70,22 +70,22 @@ Only unique constraints supported. Constraint name: lowercase English snake_case
 
 ## How to drive it (CLI only)
 
-All commands are `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
+npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
+npx -y zion-mcp@2.3.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
+npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -97,7 +97,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Project overview | `GET_PROJECT_OVERVIEW` | — |
 | Entity relation graph | `GET_ENTITY_RELATION_GRAPH` | `entityId`, `entityType` |
 | List table names | `GET_ALL_TABLE_DISPLAY_NAMES` | — |
-| Inspect tables | `GET_TABLE_INFOS` | `tableDisplayNames` |
+| Inspect tables | `GET_TABLES_INFO` | `tableDisplayNames` |
 | Create tables | `ADD_TABLES` | `items` |
 | Delete tables | `DELETE_TABLES` | `tableDisplayNames` |
 | Add fields/relations | `ADD_FIELDS_AND_RELATIONS` | `fields`, `relations`, `tableDisplayName` |
@@ -111,7 +111,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 ## Worked example: create a `post` table
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[
+npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
     {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
       {"apiName":"title","displayName":"title","basicTypeNameOrTypeId":"TEXT","required":true,"defaultValue":""},
@@ -156,7 +156,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 Then ship:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema validate && "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project sync-backend
+npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.
 
@@ -165,7 +165,7 @@ Then ship:
 - **Column type** goes in `basicTypeNameOrTypeId` using the same UPPERCASE `ColumnType` names from *Column Types* above (`TEXT`, `BIGINT`, `DECIMAL`, …).
 - **Destructive ops** (`DELETE_TABLES`, `DELETE_FIELDS_AND_RELATIONS`, `DELETE_CONSTRAINTS`) lose data; list what will be deleted and warn the user.
 - **Type changes** aren't editable: delete + recreate the column.
-- If results look stale, run `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema reload`.
+- If results look stale, run `npx -y zion-mcp@2.3.0 schema reload`.
 - **Enums / custom types** are out of scope here — see `schema-type.md`.
 
 ## Reading & writing deployed rows (runtime backend)
@@ -173,10 +173,10 @@ Then ship:
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+npx -y zion-mcp@2.3.0 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.3.0 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+npx -y zion-mcp@2.3.0 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+npx -y zion-mcp@2.3.0 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
 - `insert` must supply every NOT-NULL column; object keys are the column **systemName**.
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.

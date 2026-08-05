@@ -17,8 +17,8 @@ Logs fetched in a ±5-minute window around requestCreatedAt (defaults to now).
 Read-only — no session load or save needed.
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" logs search --customQueryCondition 'traceId: "abc-123"' --types ACTION_FLOW ACTION_FLOW_NODE --levels ERROR
+npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.3.0 logs search --customQueryCondition 'traceId: "abc-123"' --types ACTION_FLOW ACTION_FLOW_NODE --levels ERROR
 ```
 - `--customQueryCondition` is Elasticsearch syntax (e.g. `traceId: "..."`, `message.request.operationName: "MyOp"`).
 - `--types`: GATEWAY, ACTION_FLOW, ACTION_FLOW_NODE, ACTION_FLOW_CONTEXT_LOG, DEPLOYMENT, TPA, TRIGGER, SQL_GENERATION, GQL, ZAI. `--levels`: INFO, WARNING, ERROR.

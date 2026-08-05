@@ -58,59 +58,55 @@ Format: - {relative_path}: {page_title}
   - /docs: 产品简介与阅读指引
   - /docs/actions: 行为配置
   - /docs/actions/concept/interaction_model: 交互模型
-  - /docs/actions/guide/ai_integration: 配置和使用 AI Agent
-  - /docs/actions/guide/api_integration: API 集成
-  - /docs/actions/guide/building_action_flows: 行为流
-  - /docs/actions/guide/frontend_interactions: 行为配置基础操作
-  - /docs/actions/guide/payment/payment_airwallex: Zion 支付配置全解：Airwallex 接入与优化指南
-  - /docs/actions/guide/payment/payment_alipay: Zion 支付配置全解：支付宝接入与优化指南
-  - /docs/actions/guide/payment/payment_overview: Zion 支付功能概述
-  - /docs/actions/guide/payment/payment_wechat_miniprogram: 微信支付（小程序端）配置指南
-  - /docs/actions/guide/payment/payment_wechat_web: 微信支付（Web 端）配置指南
-  - /docs/actions/guide/sso_configuration: Zion SSO 单点登录配置全解：原理、优势与实操指南
+  - /docs/actions/guide/ai_integration: 搭建 AI Agent
+  - /docs/actions/guide/api_integration: 集成第三方 API
+  - /docs/actions/guide/building_action_flows: 搭建行为流
+  - /docs/actions/guide/frontend_interactions: 配置前端行为
+  - /docs/actions/guide/payment/payment_airwallex: Airwallex 支付
+  - /docs/actions/guide/payment/payment_alipay: 支付宝支付
+  - /docs/actions/guide/payment/payment_overview: 支付功能概述
+  - /docs/actions/guide/payment/payment_wechat_miniprogram: 微信支付（小程序端）
+  - /docs/actions/guide/payment/payment_wechat_web: 微信支付（Web 端）
+  - /docs/actions/guide/sso_configuration: 使用 SSO
+  - /docs/actions/reference: 参考手册
   - /docs/actions/reference/actionflow_node_list: 行为流节点
-  - /docs/actions/reference/app_page: Zion 应用与页面操作全解：页面变量、客户端变量、刷新与滚动配置指南
-  - /docs/actions/reference/camera: 相机行为
-  - /docs/actions/reference/communication: Zion 通讯行为配置全指南：微信提醒、短信通知、电话拨打与客服集成
-  - /docs/actions/reference/component_operations: Zion 组件操作全解：输入框、列表、图片、音频、动画等行为配置指南
-  - /docs/actions/reference/condition: Zion 条件行为配置详解：按钮条件判断与业务场景实践
+  - /docs/actions/reference/app_page: 客户端和页面行为
+  - /docs/actions/reference/component_operations: 组件行为
+  - /docs/actions/reference/condition: 条件
   - /docs/actions/reference/database_operation: 数据库操作
-  - /docs/actions/reference/file: Zion 文件操作全解：文件上传、查看、下载与位图处理配置指南
-  - /docs/actions/reference/for_each: Zion 循环行为配置详解：数组数据源与批量处理实践
-  - /docs/actions/reference/location: Zion 定位行为配置详解：位置获取、选择与行政区解析全流程
-  - /docs/actions/reference/navigation: Zion 跳转行为全解：小程序与 Web 页面导航配置指南
-  - /docs/actions/reference/qr_code: 二维码
-  - /docs/actions/reference/set_clipboard: Zion 粘贴板行为配置：剪切板复制与用户体验优化指南
-  - /docs/actions/reference/share: Zion 分享行为配置：微信与微博分享全流程指南
-  - /docs/actions/reference/show_toast: Zion 提示与弹窗行为配置：页面提示与弹窗全流程指南
+  - /docs/actions/reference/for_each: 循环
+  - /docs/actions/reference/navigation: 导航行为
+  - /docs/actions/reference/show_toast: 提示和弹窗
+  - /docs/actions/reference/system: 系统
   - /docs/actions/reference/trigger_list: 触发器
-  - /docs/actions/reference/user_event_collection: Zion 用户事件配置与输出全解：静默登录、绑定解绑与验证码全流程指南
-  - /docs/actions/reference/wechat_features: 微信功能全解 | Zion 平台文档
-  - /docs/billing_commercial: 账户与商业化
-  - /docs/billing_commercial/commission_rule: Zion 推广者计划与佣金规则详解
-  - /docs/billing_commercial/my_wallet: Zion 我的钱包功能详解：余额、代金券与优惠券使用指南
-  - /docs/billing_commercial/upgrade_plan: 项目和服务器升级
-  - /docs/data: 数据处理总览
+  - /docs/actions/reference/user_event_collection: 用户行为
+  - /docs/actions/reference/wechat_features: 微信功能
+  - /docs/billing_commercial: 项目与计费
+  - /docs/billing_commercial/commission_rule: 推广者计划
+  - /docs/billing_commercial/my_wallet: 我的钱包
+  - /docs/billing_commercial/project_team_collaboration: 项目管理与协作
+  - /docs/billing_commercial/resource_management: 管理项目资源
+  - /docs/billing_commercial/upgrade_plan: 升级项目版本
+  - /docs/data: 数据
   - /docs/data/concept/data_model: 数据模型与流转
   - /docs/data/concept/database_relation_model: 关系型数据库思维
   - /docs/data/concept/variables_and_parameters: 变量和参数
-  - /docs/data/guide/bird_eye_view: 数据关系鸟瞰图
+  - /docs/data/guide/bird_eye_view: 使用数据鸟瞰图
   - /docs/data/guide/conditional_data: 配置条件数据
-  - /docs/data/guide/data_management: 在线数据管理
-  - /docs/data/guide/database_configuration: 数据模型与数据库配置
+  - /docs/data/guide/data_management: 数据管理
+  - /docs/data/guide/database_configuration: 数据模型配置
   - /docs/data/guide/databinding_and_query: 获取数据源与数据绑定
   - /docs/data/guide/import_and_export: 数据导入与导出
   - /docs/data/guide/resource_manager: 多媒体资源管理
-  - /docs/data/guide/secret_management: 后端密钥安全管理
-  - /docs/data/guide/variable_parameter_usage: 使用变量与参数
+  - /docs/data/guide/secret_management: 密钥管理
+  - /docs/data/guide/variable_parameter_usage: 使用页面变量和页面参数
   - /docs/data/guide/vector_data: 向量存储与排序
   - /docs/data/reference/data_types: 数据类型
-  - /docs/data/reference/formula_dictionary: 公式与函数
+  - /docs/data/reference/formula_dictionary: 公式参考
   - /docs/design: UI 搭建
   - /docs/design/concept/layout_concepts: 布局系统
   - /docs/design/concept/ui_organization_model: 理解 Zion 的 UI 组织方式
-  - /docs/design/guide/component_system_migration: 组件系统升级通知与迁移指南
-  - /docs/design/guide/studio_basics: 页面与组件基础操作
+  - /docs/design/guide/studio_basics: 搭建第一个页面
   - /docs/design/guide/using_custom_components: 使用自定义组件
   - /docs/design/reference/breakpoints: 断点规格
   - /docs/design/reference/design_panel: 设计面板
@@ -120,26 +116,23 @@ Format: - {relative_path}: {page_title}
   - /docs/design/reference/other_components: 其他类组件
   - /docs/design/reference/page_modal: 页面与弹窗
   - /docs/design/reference/ui_shortcuts: UI 快捷键
-  - /docs/developers: 代码扩展与集成
-  - /docs/developers/api_documentation: API 结构文档
-  - /docs/developers/code_block_node_dev: 代码块
+  - /docs/developers: 开发者集成
   - /docs/developers/code_component: 开发代码组件
-  - /docs/developers/code_component/api: 代码组件 API
-  - /docs/developers/code_component/cli_changelog: 命令行工具更新日志
   - /docs/developers/headless: Headless · Zion BaaS
+  - /docs/developers/run_code: 运行代码节点开发
+  - /docs/developers/runtime_api: Runtime API 参考
   - /docs/publish_operate: 发布与运维
   - /docs/publish_operate/app_deployment: 发布应用
-  - /docs/publish_operate/domain_seo_integration: 域名、SEO 与平台接入
-  - /docs/publish_operate/log_service: 日志服务功能与用法
-  - /docs/publish_operate/mirror: 实时预览（Mirror）功能使用指南
-  - /docs/publish_operate/multiple_frontends: 多客户端（多 Web 端）能力说明
-  - /docs/publish_operate/permissions: 权限管理系统
-  - /docs/publish_operate/project_team_collaboration: 项目管理与团队协同
-  - /docs/publish_operate/reference/error_dictionary: 常见错误与解决方案
+  - /docs/publish_operate/custom_domain: 使用自定义域名
+  - /docs/publish_operate/log_service: 查看运行日志
+  - /docs/publish_operate/mirror: 实时预览
+  - /docs/publish_operate/multiple_frontends: 搭建多客户端应用
+  - /docs/publish_operate/permissions: 管理应用权限
+  - /docs/publish_operate/reference/error_dictionary: 错误参考
   - /docs/publish_operate/reference/rendering_modes: 页面渲染模式
-  - /docs/publish_operate/reference/seo_reference: SEO 参数
-  - /docs/publish_operate/troubleshooting_guide: 应用调试与排查
-  - /docs/starts/editor_overview: 认识Zion编辑器
+  - /docs/publish_operate/seo: Web 应用 SEO
+  - /docs/publish_operate/troubleshooting_guide: 排查应用问题
+  - /docs/starts/editor_overview: 认识 Zion 编辑器
   - /docs/starts/glossary: 产品术语表
   - /docs/starts/hello_world: 5分钟 待办事项应用 实战
   - /docs/starts/mental_models: 建立心智模型
@@ -168,8 +161,8 @@ Format: - {relative_path}: {page_title}
 Read-only — no schema session needed.
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" docs search --query "how to configure wechat pay / alipay payments"
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" docs get-page --path "/03_data/01_database_basics"
+npx -y zion-mcp@2.3.0 docs search --query "how to configure wechat pay / alipay payments"
+npx -y zion-mcp@2.3.0 docs get-page --path "/03_data/01_database_basics"
 ```
 
 `docs search` returns `{ path, title, url }` ranked by relevance; `url` is a public HTTPS link you can cite. Pass a returned `path` to `docs get-page` to read the full markdown. Search before answering how-to questions, and ground every claim in the retrieved page.

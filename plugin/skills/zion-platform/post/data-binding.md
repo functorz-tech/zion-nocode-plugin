@@ -8,7 +8,7 @@ Schema path: array of keys/indices locating a bindable node in the project JSON 
 Type metadata in read results uses exact typeIdentifier values such as `s:p:string` and `u:e:<enumId>`; copy those values verbatim.
 
 ### Binding Kinds
-OPTION: bind to an existing path in the data binding options tree. pathInHierarchicalMenu must be the EXACT complete path, and menu labels are locale-dependent display names (a project may render them in Chinese or English) — so a label can NEVER be guessed. Before the first option binding at a schema path whose tree you have not seen, read it with `GET_DATA_BINDING_OPTIONS`; afterwards every binding response attaches the refreshed tree for its op's path. Copy every label verbatim from that tree — never invent, translate, or shorten a label — and include every intermediate menu level. If the tree root is a named context (e.g., "List Context"), include it as the first element. CONST_VALUE: set a literal constant (e.g., "Submit", 0, false). FORMULA: compute a value with an operator (text / math / time / array / enum / geography / json groups); discover the available operators before building one. CONDITIONAL: choose the value by branch — define the branches, then build each branch's predicate. DISPLAY_NAME: rename a component's displayed title.
+OPTION: bind to an existing path in the data binding options tree. pathInHierarchicalMenu must be the EXACT complete path, and menu labels are locale-dependent display names (a project may render them in Chinese or English) — so a label can NEVER be guessed. Before the first option binding at a schema path whose tree you have not seen, read it with `BROWSE_DATA_BINDING_OPTIONS` (CRITICAL: Do NOT call `get_options_tree` if the tree is already provided in the context above); afterwards every binding response attaches the refreshed tree for its op's path. Copy every label verbatim from that tree — never invent, translate, or shorten a label — and include every intermediate menu level. If the tree root is a named context (e.g., "List Context"), include it as the first element. CONST_VALUE: set a literal constant (e.g., "Submit", 0, false). FORMULA: compute a value with an operator (text / math / time / array / enum / geography / json groups); discover the available operators before building one. CONDITIONAL: choose the value by branch — define the branches, then build each branch's predicate. DISPLAY_NAME: rename a component's displayed title.
 
 ### Priority
 1. Prefer OPTION (live data) over CONST_VALUE.
@@ -41,22 +41,22 @@ A FORMULA or CONDITIONAL value is built in several steps at the value's schema p
 
 ## How to drive it (CLI only)
 
-All commands are `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
+npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
+npx -y zion-mcp@2.3.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
+npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -65,7 +65,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 | Intent | `name` | Required `args` |
 |---|---|---|
-| Read options at a path | `GET_DATA_BINDING_OPTIONS` | `schemaPath` |
+| Browse options at a path | `BROWSE_DATA_BINDING_OPTIONS` | `schemaPath` |
 | Expected type at a path | `GET_DATA_BINDING_TYPE` | `schemaPath` |
 | List formula operators | `GET_FORMULA_OPERATORS` | `schemaPath` |
 | Formula config options at a path | `GET_FORMULA_CONFIG_OPTIONS` | `schemaPath` |
@@ -96,10 +96,13 @@ condition, read back its echoed path, then drill in — so you never need a path
 ## Binding kinds
 
 Pick the `CREATE_*` op for the slot — all keyed by `schemaPath`:
-- **OPTION** (preferred — live data): `CREATE_OPTION_BINDING`. First call `GET_DATA_BINDING_OPTIONS`
+- **OPTION** (preferred — live data): `CREATE_OPTION_BINDING`. First call `BROWSE_DATA_BINDING_OPTIONS`
   for that schemaPath and pass back its exact `pathInHierarchicalMenu` (include the root context
-  name, e.g. "List Context", when present). Inside a list nested in another list, bind from the
-  ancestor item to preserve the relation.
+  name, e.g. "List Context", when present). The tree is size-budgeted: a line ending in
+  `… menuPath=[…]` is an omitted subtree — call again with that `menuPath` to fetch it, and
+  prepend the drilled menuPath to paths picked inside it. Options marked `*` mismatch the slot's
+  type — bind them through a FORMULA / conversion, never `CREATE_OPTION_BINDING`. Inside a list
+  nested in another list, bind from the ancestor item to preserve the relation.
 - **CONST_VALUE**: `CREATE_CONST_BINDING` — a literal (string / number / boolean) when no option fits.
 - **FORMULA**: `CREATE_FORMULA_BINDING` — computed values; discover operators with
   `GET_FORMULA_OPERATORS` (groups GENERIC / TEXT / MATH / TIME / ARRAY / ENUM / GEOGRAPHY / JSON).
@@ -156,15 +159,18 @@ to address. Never hand-build paths.
 
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
 
-### `GET_DATA_BINDING_OPTIONS`
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the target element, taken from a read tool's output (e.g. a conditionSchemaPath / checkSchemaPath from GET_ROLE_DETAIL, node and binding paths from the entity detail tools); never hand-built.
+### `BROWSE_DATA_BINDING_OPTIONS`
+- `maxChars`: `integer` — Approximate output size limit in characters (default 8000, clamped to [2000, 40000]). Raise it deliberately when one complete tree beats several drill-down calls.
+- `menuPath`: `array<string>` — Menu path to drill into, copied verbatim from a truncation marker of a previous call (option names from the tree root). Omit to browse from the root.
+- `rootLevelNameContains`: `string` — Case-insensitive substring that keeps only the matching entries of the level being browsed (the direct children of menuPath, or the tree root when menuPath is omitted); menus and bindable values alike, and never any deeper level. Use it when one level is too wide to read — the surviving branches then get the whole character budget.
+- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the binding slot, taken from a read tool's output; never hand-built.
 
 ### `GET_DATA_BINDING_TYPE`
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the target element, taken from a read tool's output (e.g. a conditionSchemaPath / checkSchemaPath from GET_ROLE_DETAIL, node and binding paths from the entity detail tools); never hand-built.
 
 ### `CREATE_OPTION_BINDING`
 - `operation`: `enum(REPLACE|CONCAT)` — Specifies how to apply the data: 'REPLACE' overwrites the current value, 'CONCAT' appends to it. Default is 'REPLACE'.
-- `pathInHierarchicalMenu` *(required)*: `array<string>` — The full hierarchical path to the specific data option (VALUE) to be bound. This path corresponds to the '[Data Binding Options Tree]' in the context.
+- `pathInHierarchicalMenu` *(required)*: `array<string>` — The full hierarchical path to the specific data option (VALUE) to be bound, picked from the BROWSE_DATA_BINDING_OPTIONS tree: the menuPath you drilled into (if any) + the option's path in that result. Never hand-built.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The specific schema path in the project where the data binding is occurring.
 
 ### `CREATE_CONST_BINDING`
@@ -269,6 +275,6 @@ Change a sort rule's column and/or direction by its index within the filter's so
 Then ship:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema validate && "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project sync-backend
+npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

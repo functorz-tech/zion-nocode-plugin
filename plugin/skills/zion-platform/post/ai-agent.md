@@ -4,7 +4,7 @@
 A ZAI config is an LLM-backed agent the app runs via a "Run AI" action / action-flow node (asynchronous only). An agent has a name + description, a model, sampling settings (temperature, maxRound, max output tokens), a system + user **prompt**, and its **output**.
 
 ### Reading
-`GET_ZAI_MODEL_OPTIONS` returns the models currently selectable in this project. `GET_ALL_ZAI_CONFIG_INFOS` summarizes every agent; `GET_ZAI_CONFIG_DETAIL` returns one agent's full config — its input args (with their map keys), its prompt components each with the **schema path** of its text binding, its output config and structured-output fields, its database/API contexts (with the query schema paths for the request-filter tools), its knowledge base, and its callable tools.
+`GET_ZAI_MODEL_OPTIONS` returns the models currently selectable in this project. `GET_ALL_ZAI_CONFIGS_INFO` summarizes every agent; `GET_ZAI_CONFIG_DETAIL` returns one agent's full config — its input args (with their map keys), its prompt components each with the **schema path** of its text binding, its output config and structured-output fields, its database/API contexts (with the query schema paths for the request-filter tools), its knowledge base, and its callable tools.
 
 ### Creating & editing
 `ADD_ZAI_CONFIGS` seeds an agent with default empty system + user prompts and plain-text output; adding the first agent also provisions the AI conversation tables/relations/permissions. Edit scalar config (name, description, temperature, maxRound) with `UPDATE_ZAI_CONFIG`. The **model** is required when creating an agent and can be changed via `UPDATE_ZAI_CONFIG`. Call `GET_ZAI_MODEL_OPTIONS` first. If the user did not name a model, choose the single selectable option whose `defaultModel` is true, matching the editor's default; otherwise choose a selectable model whose capabilities fit the request. Copy its exact `customModelIdentifier` ({id, namespace}). Never fabricate or omit the identifier.
@@ -44,22 +44,22 @@ External-API context here is workspace HTTP APIs: `ADD_ZAI_CONFIG_API_CONTEXTS` 
 
 ## How to drive it (CLI only)
 
-All commands are `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
+npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
+npx -y zion-mcp@2.3.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
+npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -68,7 +68,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 | Intent | `name` | Required `args` |
 |---|---|---|
-| List agents | `GET_ALL_ZAI_CONFIG_INFOS` | — |
+| List agents | `GET_ALL_ZAI_CONFIGS_INFO` | — |
 | Agent detail (ids/paths) | `GET_ZAI_CONFIG_DETAIL` | `configId` |
 | Selectable I/O types | `GET_ZAI_CONFIG_SELECTABLE_TYPES` | `slot` |
 | Create agents | `ADD_ZAI_CONFIGS` | `items` |
@@ -89,7 +89,7 @@ Run AI node (`actionflow.md`) that references the config by id.
 **Choosing a model (no editor needed):** set it with `UPDATE_ZAI_CONFIG`'s `customModelIdentifier` ({id, namespace}). Discover valid ids + features (vision / file support) from the backend descriptor:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" platform graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
+npx -y zion-mcp@2.3.0 platform graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
 ```
 Copy an `id` (with its `namespace`) back verbatim — never fabricate one — then verify with `GET_ZAI_CONFIG_DETAIL`.
 
@@ -134,6 +134,6 @@ Configure the agent's output: plain streamed text (isStructured=false) or a stru
 Then ship:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema validate && "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project sync-backend
+npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

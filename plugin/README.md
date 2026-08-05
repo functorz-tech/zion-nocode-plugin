@@ -7,10 +7,10 @@
 类型系统版本，并路由到相互隔离的对应能力目录。同一组合包提供四份宿主清单 — `.claude-plugin/plugin.json`（Claude Code）、
 `.codex-plugin/plugin.json`（Codex）、`.cursor-plugin/plugin.json`（Cursor）与
 `.qoder-plugin/plugin.json`（QoderWork） — 共享同一套 `skills/`、`hooks/` 与 `bin/`。Cursor 还会使用 `mcp.json` 中声明的 `zion` MCP 服务器；
-Claude Code 与 Codex 则忽略它，改为通过 bin 启动器调用 CLI。其 CLI 配方以绝对路径调用启动器
-（`${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp`，在两种宿主下均可解析），而非裸命令，
-因此即使 PATH 上全局安装了 `zion-mcp`（或 `zion`）也无法将其覆盖。启动器始终通过
-`npx -y zion-mcp@<version>` 运行锁定的已发布 CLI，因此无论从套件市场安装还是本地运行，套件行为都完全一致。
+Claude Code 与 Codex 则忽略它。其 CLI 配方直接通过 `npx -y zion-mcp@<version>` 调用锁定的已发布 CLI，
+该版本锁定运行本套件的确切构建，因此即使 PATH 上全局安装了 `zion-mcp`（或 `zion`）也无法将其覆盖，
+且不依赖宿主暴露 `PLUGIN_ROOT`/`CLAUDE_PLUGIN_ROOT`。随附的 `bin/zion-mcp` 启动器运行相同的
+`npx -y zion-mcp@<version>`，可继续用于本地命令行。
 
 ## 本地使用
 

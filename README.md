@@ -48,6 +48,27 @@ ln -s "$PWD/plugin" ~/.cursor/plugins/local/zion-nocode
 A public Cursor Marketplace listing is submitted at cursor.com/marketplace/publish (open source,
 manually reviewed).
 
+### opencode
+
+opencode has no plugin marketplace; it reads the `zion` MCP server from an
+`opencode.json` (its `mcp` shape differs from `mcp.json`). This repo ships one at its root — copy it
+into your project, or merge its `mcp` block into your existing config:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "zion": {
+      "type": "local",
+      "command": ["npx", "-y", "zion-mcp@latest", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+You get Zion's tools; the guided `zion-platform` skill is plugin-only (Claude Code, Codex, Cursor).
+
 ### Other MCP-compatible tools (Windsurf, Cline, Claude Desktop, Qoder, Trae, …)
 
 These don't read the plugin marketplace, but they can use the underlying `zion-mcp` MCP server

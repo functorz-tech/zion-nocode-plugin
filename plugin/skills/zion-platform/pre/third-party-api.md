@@ -19,7 +19,7 @@ The body is ONE root node, so a config may hold at most one `BODY` parameter —
 An `OBJECT` or `ARRAY` parameter (or response-data node) is invalid while empty — a bare `OBJECT` is rejected ("field does not have any inner fields"). Immediately after adding one, model its shape: add its fields with `ADD_TPA_PARAMETER_CHILDREN` / `ADD_TPA_RESPONSE_DATA_CHILDREN` (an `ARRAY` needs at least its element/`itemType` defined) before relying on the config.
 
 ### Workflow
-List configs with `GET_ALL_TPA_CONFIG_INFOS`, then `GET_TPA_CONFIG_DETAIL` to read a config's parameter and response `uniqueId`s — you pass these ids to the child tools. Create endpoints with `ADD_TPA_CONFIGS`; add request inputs with `ADD_TPA_CONFIG_PARAMETERS` (and `ADD_TPA_PARAMETER_CHILDREN` for object/array fields). Describe each response branch with `ADD_TPA_RESPONSE_DATA`, then `ADD_TPA_RESPONSE_DATA_CHILDREN` for nested fields. Configure list pagination with `SET_TPA_CONFIG_PAGING`. Editing a config creates a new version; "Sync Backend" is required for changes to take effect in production.
+List configs with `GET_ALL_TPA_CONFIGS_INFO`, then `GET_TPA_CONFIG_DETAIL` to read a config's parameter and response `uniqueId`s — you pass these ids to the child tools. Create endpoints with `ADD_TPA_CONFIGS`; add request inputs with `ADD_TPA_CONFIG_PARAMETERS` (and `ADD_TPA_PARAMETER_CHILDREN` for object/array fields). Describe each response branch with `ADD_TPA_RESPONSE_DATA`, then `ADD_TPA_RESPONSE_DATA_CHILDREN` for nested fields. Configure list pagination with `SET_TPA_CONFIG_PAGING`. Editing a config creates a new version; "Sync Backend" is required for changes to take effect in production.
 
 ### Model the response fields you consume
 A bare root OBJECT set with `ADD_TPA_RESPONSE_DATA` is NOT a finished response: nothing can bind typed values from it — flows only get the raw payload blob, and the API page shows an endpoint with no documented shape. After setting the root, ALWAYS model the fields your flows/bindings actually consume with `ADD_TPA_RESPONSE_DATA_CHILDREN` (from the API's docs or a sample response; nest children for the path you need, e.g. forecast → forecastday(ARRAY of OBJECT) → day(OBJECT) → avgtemp_c(DECIMAL)). Leaving the root unmodeled is acceptable ONLY when the entire payload is deliberately passed verbatim into a code/AI node — if you do that, state it explicitly in your read-back so the user knows it was a choice, not an omission.
@@ -34,30 +34,30 @@ To onboard an existing API, prefer `tpa import-from-openapi` over hand-building 
 The import tools described above are CLI verbs here — prefer them over hand-building configs:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" tpa fetch-doc --url "https://api.example.com/docs"          # read a docs page: Markdown content, same-site pageLinks, OpenAPI specLinks; --offset to keep reading
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" tpa import-from-openapi --url "https://api.example.com/openapi.json" --pathsFilter /users /orders   # spec URL (or --specText '<json|yaml>'); pathsFilter values are space-separated substrings
+npx -y zion-mcp@2.3.0 tpa fetch-doc --url "https://api.example.com/docs"          # read a docs page: Markdown content, same-site pageLinks, OpenAPI specLinks; --offset to keep reading
+npx -y zion-mcp@2.3.0 tpa import-from-openapi --url "https://api.example.com/openapi.json" --pathsFilter /users /orders   # spec URL (or --specText '<json|yaml>'); pathsFilter values are space-separated substrings
 ```
 
 `import-from-openapi` creates each operation as a full TPA endpoint — parameters, body, response trees, paging — in one call (capped at 25; rolled back on failure) and reports the created `tpaConfigId`s. Scope with `--pathsFilter` FIRST (substring match on the spec's path keys) — importing a whole spec creates every endpoint, and pruning afterwards is a separate DELETE. After importing, cross-check the endpoint's parameters against the human docs (specs often lag; add missing ones with the granular ops). `fetch-doc` has a 15-fetch session budget; when no machine-readable spec exists, author the configs from what you read with the granular ops below: `ADD_TPA_CONFIGS` → `ADD_TPA_CONFIG_PARAMETERS` → `ADD_TPA_RESPONSE_DATA` (+ `*_CHILDREN` for nested fields).
 
 ## How to drive it (CLI only)
 
-All commands are `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
+npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
+npx -y zion-mcp@2.3.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
+npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -66,7 +66,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 | Intent | `name` | Required `args` |
 |---|---|---|
-| List TPA configs | `GET_ALL_TPA_CONFIG_INFOS` | — |
+| List TPA configs | `GET_ALL_TPA_CONFIGS_INFO` | — |
 | Config detail (ids) | `GET_TPA_CONFIG_DETAIL` | `tpaConfigId` |
 | Add configs | `ADD_TPA_CONFIGS` | `items` |
 | Update a config | `UPDATE_TPA_CONFIG` | `tpaConfigId` |
@@ -123,7 +123,6 @@ Update an endpoint's scalar config: name, url, description, method, operation, r
 - `method`: `enum(GET|POST|PUT|DELETE)`
 - `name`: `string`
 - `operation`: `enum(query|mutation)`
-- `requestContentType`: `string`
 - `tpaConfigId` *(required)*: `string`
 - `url`: `string`
 
@@ -173,6 +172,6 @@ Configure (or clear) pagination for a list endpoint.
 Then ship:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema validate && "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project sync-backend
+npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

@@ -12,7 +12,7 @@ Synchronous: all nodes in one synchronous Actionflow invocation execute inside a
 Both modes share a per-flow total timeout (`ACTION_FLOW_TIMEOUT_MILLISECONDS`): 15 s on free-tier servers, 10 min on paid tiers. The budget is for the entire flow, not per node.
 
 ### Triggers
-What fires a flow. Four kinds: Manual (a UI action — no config), scheduled (cron), database-change event, and webhook. Scheduled and database-change triggers are tool-managed: inspect with `GET_ALL_SCHEDULED_TRIGGER_INFOS` / `GET_ALL_DB_TRIGGER_INFOS`, create with `ADD_SCHEDULED_TRIGGERS` (a Quartz cron — set a future `endInstant` or it never fires) and `ADD_DB_TRIGGERS` (a table + INSERT/UPDATE/DELETE), each pointing at a flow id from `GET_ALL_ACTION_FLOW_INFOS` (update/delete variants too). Manual triggers need no setup; webhook triggers are editor-only (no tool) — say so if asked to add one.
+What fires a flow. Four kinds: Manual (a UI action — no config), scheduled (cron), database-change event, and webhook. Scheduled and database-change triggers are tool-managed: inspect with `GET_ALL_SCHEDULED_TRIGGERS_INFO` / `GET_ALL_DB_TRIGGERS_INFO`, create with `ADD_SCHEDULED_TRIGGERS` (a Quartz cron — set a future `endInstant` or it never fires) and `ADD_DB_TRIGGERS` (a table + INSERT/UPDATE/DELETE), each pointing at a flow id from `GET_ALL_ACTION_FLOWS_INFO` (update/delete variants too). Manual triggers need no setup; webhook triggers are editor-only (no tool) — say so if asked to add one.
 
 ### Node Types
 These are the fixed built-in node types — the only values accepted for a node's `type`:
@@ -45,7 +45,7 @@ Three tiers, in order of preference:
 Declared at flow level, accessible by all nodes, assigned with "Set Variable" node.
 
 ### Inputs & Outputs
-Inspect a flow first with `GET_ALL_ACTION_FLOW_INFOS` / `GET_ACTION_FLOW_DETAIL`. Declare typed **input params** with `ADD_ACTION_FLOW_INPUT_PARAMS`; set each param's type to a value copied verbatim from `GET_ACTION_FLOW_SELECTABLE_TYPES` (never hand-build the type string).
+Inspect a flow first with `GET_ALL_ACTION_FLOWS_INFO` / `GET_ACTION_FLOW_DETAIL` (unless its detail is already provided in your context). Declare typed **input params** with `ADD_ACTION_FLOW_INPUT_PARAMS`; set each param's type to a value copied verbatim from `GET_ACTION_FLOW_SELECTABLE_TYPES` (never hand-build the type string).
 
 ### List Input Workaround
 Input parameters accept only scalar basic types; they cannot receive arrays. When a caller needs to supply a list of objects, persist the list before invoking the flow: create one parent/request record, save each list item as a child record related to that parent, and pass only the parent's ID as a scalar input. In the flow, query the related child records and use a Loop node to process the query result. For example, for a checkout with cart items, create one `CheckoutRequest`, create one related `CheckoutItem` per `{productId, quantity}`, invoke the flow with `checkoutRequestId`, then query and loop over those items. Validate that the parent belongs to the caller before processing it; do not encode the list as text merely to bypass the input type restriction.
@@ -55,7 +55,7 @@ A flow returns a **set of named output fields**: add them with `ADD_ACTION_FLOW_
 `DELETE_ACTION_FLOW_OUTPUT_FIELDS`.
 
 ### Building & Editing a Flow
-Create flows with `ADD_ACTION_FLOWS` (each seeds an empty FLOW_START → FLOW_END), then read node and structure ids from `GET_ACTION_FLOW_DETAIL` before editing. Add a node after another with `ADD_ACTION_FLOW_NODE`, reorder with `MOVE_ACTION_FLOW_NODE`, remove with `DELETE_ACTION_FLOW_NODES`, and branch a Condition node with `ADD_ACTION_FLOW_BRANCH_ITEM`. Every node's displayName must state its business intent ('Insert generation request', 'Decrement like count') — `ADD_ACTION_FLOW_NODE` rejects a blank name; never leave the node-type default. Edit a node's name or type-scalar config with `UPDATE_ACTION_FLOW_NODE`, but set its data bindings (values, conditions, data sources, mutation fields) with the bindings plugin at the node's schema path — never inline. A node's schema path is NEVER hand-built: copy it from `ADD_ACTION_FLOW_NODE`'s result or `GET_ACTION_FLOW_DETAIL`'s nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments to reach a binding site inside the node. The key names vary by node type — an AI node's input arg is `.../allNodes/{j}/inputArgs/<argKey>`, a code node's is `.../allNodes/{j}/inputArgsDataBinding/<argName>`, a mutation column is `.../allNodes/{j}/mutation/object/<columnName>` — copy the exact keys from `GET_ACTION_FLOW_CONTEXT_INFO`'s currentNode structure, never guess them. Declare flow variables with `ADD_ACTION_FLOW_GLOBAL_VARIABLES` and assign them in a Set Variable node with `ADD_GLOBAL_VARIABLES_NODE_TARGETS`. A Run Code node's `args.<name>` input slots are managed with `ADD_CUSTOM_CODE_NODE_INPUT` (rename/delete variants); its named result values are declared with `ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE` (update/delete variants) so downstream nodes can bind to them; fill the code body with `CREATE_CONST_BINDING`. An update or delete Database node is seeded with an always-true filter that matches **every** row — narrow it with the bindings plugin's request filters before syncing, or the write hits the whole table. A Third-Party API node's request parameters are pre-seeded on the node when the API is selected — read the node back and bind ONLY the parameter slots it shows in the legacy `event/input` tree, e.g. `.../event/input/object/{k}/value`. NEVER invent input keys the read-back does not show: the runtime and editor ignore them.
+Create flows with `ADD_ACTION_FLOWS` (each seeds an empty FLOW_START → FLOW_END), then read node and structure ids from `GET_ACTION_FLOW_DETAIL` before editing. Add a node after another with `ADD_ACTION_FLOW_NODE`, reorder with `MOVE_ACTION_FLOW_NODES`, remove with `DELETE_ACTION_FLOW_NODES`, and branch a Condition node with `ADD_ACTION_FLOW_BRANCH_ITEM`. Every node's displayName must state its business intent ('Insert generation request', 'Decrement like count') — `ADD_ACTION_FLOW_NODE` rejects a blank name; never leave the node-type default. Edit a node's name or type-scalar config with `UPDATE_ACTION_FLOW_NODE`, but set its data bindings (values, conditions, data sources, mutation fields) with the bindings plugin at the node's schema path — never inline. A node's schema path is NEVER hand-built: copy it from `ADD_ACTION_FLOW_NODE`'s result or `GET_ACTION_FLOW_DETAIL`'s nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments to reach a binding site inside the node. The key names vary by node type — an AI node's input arg is `.../allNodes/{j}/inputArgs/<argKey>`, a code node's is `.../allNodes/{j}/inputArgsDataBinding/<argName>`, a mutation column is `.../allNodes/{j}/mutation/object/<columnName>` — copy the exact keys from `GET_ACTION_FLOW_CONTEXT_INFO`'s currentNode structure, never guess them. Declare flow variables with `ADD_ACTION_FLOW_GLOBAL_VARIABLES` and assign them in a Set Variable node with `ADD_GLOBAL_VARIABLES_NODE_TARGETS`. A Run Code node's `args.<name>` input slots are managed with `ADD_CUSTOM_CODE_NODE_INPUT` (rename/delete variants); its named result values are declared with `ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE` (update/delete variants) so downstream nodes can bind to them; fill the code body with `CREATE_CONST_BINDING`. An update or delete Database node is seeded with an always-true filter that matches **every** row — narrow it with the bindings plugin's request filters before syncing, or the write hits the whole table. A Third-Party API node's request parameters are pre-seeded on the node when the API is selected — read the node back and bind ONLY the parameter slots it shows in the legacy `event/input` tree, e.g. `.../event/input/object/{k}/value`. NEVER invent input keys the read-back does not show: the runtime and editor ignore them.
 
 ### Condition Branches
 Condition branches use their left-to-right editor order. At runtime, only the first branch whose condition is true has its branch body executed; branches to its right are not entered. Put an `Always` branch last when fallback behavior is required—an earlier `Always` branch shadows every branch to its right. Do not rely on the no-match behavior; provide an explicit fallback whenever the flow must choose a branch. Only `MUTUAL_EXCLUSION` is supported. `MUTUAL_TOLERANCE` may still appear in generated argument schemas, but tolerance branches are not implemented and fail at runtime. Always set a Condition node's `conditionType` to `MUTUAL_EXCLUSION`.
@@ -81,22 +81,22 @@ Custom Code Blocks run in a synchronous GraalJS server sandbox. No async/await, 
 
 ## How to drive it (CLI only)
 
-All commands are `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" whoami                                    # check auth; if needed: "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" login
+npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" projects search):
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project set-current --projectExId <exId>
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema load                               # warm the schema session
+npx -y zion-mcp@2.3.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
+npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -105,7 +105,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 | Intent | `name` | Required `args` |
 |---|---|---|
-| List flows | `GET_ALL_ACTION_FLOW_INFOS` | — |
+| List flows | `GET_ALL_ACTION_FLOWS_INFO` | — |
 | Flow detail (nodes, ids) | `GET_ACTION_FLOW_DETAIL` | `actionFlowId` |
 | Selectable I/O types | `GET_ACTION_FLOW_SELECTABLE_TYPES` | `slot` |
 | Data/vars in scope at a node path | `GET_ACTION_FLOW_CONTEXT_INFO` | `schemaPath` |
@@ -118,7 +118,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Add a node | `ADD_ACTION_FLOW_NODE` | `actionFlowId`, `afterNodeId`, `node` |
 | Update a node config | `UPDATE_ACTION_FLOW_NODE` | `actionFlowId`, `nodeId` |
 | Delete nodes | `DELETE_ACTION_FLOW_NODES` | `actionFlowId`, `nodeIds` |
-| Reorder a node | `MOVE_ACTION_FLOW_NODE` | `actionFlowId`, `afterNodeId`, `nodeId` |
+| Reorder a node | `MOVE_ACTION_FLOW_NODE` | — |
 | Add a branch (Condition node) | `ADD_ACTION_FLOW_BRANCH_ITEM` | `actionFlowId`, `branchSeparationId` |
 | Declare flow variables | `ADD_ACTION_FLOW_GLOBAL_VARIABLES` | `actionFlowId`, `items` |
 | Update flow variables | `UPDATE_ACTION_FLOW_GLOBAL_VARIABLES` | `actionFlowId`, `items` |
@@ -126,7 +126,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Assign Set-Variable node targets | `ADD_GLOBAL_VARIABLES_NODE_TARGETS` | `actionFlowId`, `nodeId`, `variableKeys` |
 | Remove Set-Variable node targets | `DELETE_GLOBAL_VARIABLES_NODE_TARGETS` | `actionFlowId`, `nodeId`, `variableKeys` |
 | Add a Run Code input | `ADD_CUSTOM_CODE_NODE_INPUT` | `actionFlowId`, `name`, `nodeId` |
-| Rename a Run Code input | `RENAME_CUSTOM_CODE_NODE_INPUT` | `actionFlowId`, `newName`, `nodeId`, `oldName` |
+| Rename a Run Code input | `RENAME_CUSTOM_CODE_NODE_INPUT` | — |
 | Delete a Run Code input | `DELETE_CUSTOM_CODE_NODE_INPUT` | `actionFlowId`, `name`, `nodeId` |
 | Add a Run Code output value | `ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE` | `actionFlowId`, `name`, `nodeId`, `type` |
 | Update a Run Code output value | `UPDATE_CUSTOM_CODE_NODE_OUTPUT_VALUE` | `actionFlowId`, `name`, `nodeId` |
@@ -139,12 +139,12 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 | Intent | `name` | Required `args` |
 |---|---|---|
-| List DB triggers | `GET_ALL_DB_TRIGGER_INFOS` | — |
+| List DB triggers | `GET_ALL_DB_TRIGGERS_INFO` | — |
 | DB trigger detail | `GET_DB_TRIGGER_DETAIL` | `triggerId` |
 | Add DB triggers | `ADD_DB_TRIGGERS` | `items` |
 | Update a DB trigger | `UPDATE_DB_TRIGGER` | `triggerId` |
 | Delete DB triggers | `DELETE_DB_TRIGGERS` | `triggerIds` |
-| List scheduled triggers | `GET_ALL_SCHEDULED_TRIGGER_INFOS` | — |
+| List scheduled triggers | `GET_ALL_SCHEDULED_TRIGGERS_INFO` | — |
 | Scheduled trigger detail | `GET_SCHEDULED_TRIGGER_DETAIL` | `triggerId` |
 | Add scheduled triggers | `ADD_SCHEDULED_TRIGGERS` | `items` |
 | Update a scheduled trigger | `UPDATE_SCHEDULED_TRIGGER` | `triggerId` |
@@ -183,7 +183,7 @@ narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FI
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.3.0 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -191,7 +191,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 ### `GET_ACTION_FLOW_DETAIL`
 
-Get the full structure of one action flow: its input params, output, declared variables, and node tree. Use a flow id from GET_ALL_ACTION_FLOW_INFOS. The result's nodeSchemaPaths maps each node id to the canonical schemaPath (server/actionFlows/{i}/allNodes/{j}) required by GET_ACTION_FLOW_CONTEXT_INFO and the bindings tools — always copy it verbatim, never hand-build node paths.
+Get the full structure of one action flow: its input params, output, declared variables, and node tree. Use a flow id from GET_ALL_ACTION_FLOWS_INFO. The result's nodeSchemaPaths maps each node id to the canonical schemaPath (server/actionFlows/{i}/allNodes/{j}) required by GET_ACTION_FLOW_CONTEXT_INFO and the bindings tools — always copy it verbatim, never hand-build node paths.
 - `actionFlowId` *(required)*: `string` — The unique id of the action flow to inspect.
 - `detail`: `enum(SUMMARY|FULL)` — SUMMARY (default) returns the flow contract plus one compact entry per node (id, type, wiring, key targets) — drill into a node with GET_ACTION_FLOW_NODE_DETAIL; FULL returns every node's complete config.
 
@@ -203,7 +203,7 @@ Return the data and variables in scope at a node's schema path — what a bindin
 ### `ADD_ACTION_FLOWS`
 
 Create one or more action flows. Each is seeded empty (FLOW_START connected straight to FLOW_END); add nodes afterwards with ADD_ACTION_FLOW_NODE.
-- `items` *(required)*: `array<{displayName: string, isAsync?: boolean, timeout?: integer}>` — Action flows to create. Each is seeded with an empty body (a FLOW_START connected directly to a FLOW_END); add nodes afterwards with ADD_ACTION_FLOW_NODE.
+- `items` *(required)*: `array<{displayName: string, groupId?: string, isAsync?: boolean, timeout?: integer}>` — Action flows to create. Each is seeded with an empty body (a FLOW_START connected directly to a FLOW_END); add nodes afterwards with ADD_ACTION_FLOW_NODE.
 
 ### `UPDATE_ACTION_FLOW`
 
@@ -249,7 +249,7 @@ Insert a node immediately after an existing node (afterNodeId). Read node ids fr
 
 Edit a node's display name or type-specific scalar config (e.g. queried table, row limit, target flow). Data-binding config — values, conditions, data sources, mutation fields — is edited with the bindings plugin, not here.
 - `actionFlowId` *(required)*: `string`
-- `config`: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {tableDisplayName?: string} | QUERY_RECORD → {limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId?: string} | THIRD_PARTY_API → {operation?: string, thirdPartyApiId?: string}` — Node-type-specific scalar config to update. Its `type` must match the node's actual type; fields left null are unchanged. Only non-data-binding scalars are editable here — data-binding config (mutation set values, conditions, dataSource, input args, target account, AI message) is edited with the CREATE_*_BINDING tools at the node's schema path, and a query/mutation's conditions/sort live in its `filters` — edit them via GET_REQUEST_FILTER_CONTEXT and the *_REQUEST_* tools at the node's schema path.
+- `config`: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {clearOnConflict?: boolean, onConflict?: {actionType?: enum(DO_NOTHING|UPDATE), constraintName?: string}, tableDisplayName?: string} | QUERY_RECORD → {clearLimit?: boolean, limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId?: string} | THIRD_PARTY_API → {operation?: string, thirdPartyApiId?: string}` — Node-type-specific scalar config to update. Its `type` must match the node's actual type; fields left null are unchanged. Only non-data-binding scalars are editable here — data-binding config (mutation set values, conditions, dataSource, input args, target account, AI message) is edited with the CREATE_*_BINDING tools at the node's schema path, and a query/mutation's conditions/sort live in its `filters` — edit them via GET_REQUEST_FILTER_CONTEXT and the *_REQUEST_* tools at the node's schema path.
 - `displayName`: `string` — New display name; applies to any node type.
 - `nodeId` *(required)*: `string` — The uniqueId of the node to update.
 
@@ -258,13 +258,6 @@ Edit a node's display name or type-specific scalar config (e.g. queried table, r
 Delete nodes from a flow by id.
 - `actionFlowId` *(required)*: `string`
 - `nodeIds` *(required)*: `array<string>` — uniqueIds of nodes to delete. A leaf node is removed on its own; passing a block start node (BRANCH_SEPARATION / FOR_EACH_START / WHILE_START) removes the entire block. The flow start/end and block boundary/branch-item nodes cannot be deleted directly.
-
-### `MOVE_ACTION_FLOW_NODE`
-
-Move a leaf node to immediately after another node.
-- `actionFlowId` *(required)*: `string`
-- `afterNodeId` *(required)*: `string` — Move the node to immediately after this node (its uniqueId).
-- `nodeId` *(required)*: `string` — The uniqueId of the leaf node to move.
 
 ### `ADD_ACTION_FLOW_BRANCH_ITEM`
 
@@ -302,16 +295,10 @@ Add assignment targets (flow-variable keys) to a Set Variable node; bind each va
 
 Add a named input slot (referenced as args.<name>) to a Run Code node; bind its value with the bindings plugin. Generate the code body with CREATE_CONST_BINDING.
 - `actionFlowId` *(required)*: `string`
+- `arrayLevel`: `integer` — Array nesting level for [type]; 1 = list, 2 = list of lists. Omit for a scalar.
 - `name` *(required)*: `string` — Name (key) of the new input; must be unique within the node.
 - `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
-
-### `RENAME_CUSTOM_CODE_NODE_INPUT`
-
-Rename a Run Code node input slot, keeping its current value binding.
-- `actionFlowId` *(required)*: `string`
-- `newName` *(required)*: `string` — New input name; must be unique within the node.
-- `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
-- `oldName` *(required)*: `string` — Current input name.
+- `type`: `string` — The input's type. Copy a `typeIdentifier` returned by GET_ACTION_FLOW_SELECTABLE_TYPES with slot=CUSTOM_CODE_INPUT verbatim — never hand-build the string. Defaults to string when omitted. Only projects on the refactored type system carry a per-input type.
 
 ### `ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE`
 
@@ -348,7 +335,7 @@ Get one database-change trigger's full configuration by id.
 
 ### `ADD_DB_TRIGGERS`
 
-Create database-change triggers. Each fires a flow (actionFlowId from GET_ALL_ACTION_FLOW_INFOS) when a row in a table (tableDisplayName from the database plugin's GET_ALL_TABLE_DISPLAY_NAMES) is inserted / updated / deleted (dbOperationType, defaults to INSERT).
+Create database-change triggers. Each fires a flow (actionFlowId from GET_ALL_ACTION_FLOWS_INFO) when a row in a table (tableDisplayName from the database plugin's GET_ALL_TABLE_DISPLAY_NAMES) is inserted / updated / deleted (dbOperationType, defaults to INSERT).
 - `items` *(required)*: `array<{actionFlowId: string, dbOperationType?: enum(INSERT|UPDATE|INSERT_OR_UPDATE|DELETE), displayName?: string, enabled?: boolean, tableDisplayName: string}>` — Database triggers to create. Each fires its action flow on the chosen table operation, with the flow's input args seeded as empty bindings (fill them via the CREATE_*_BINDING tools at the schema paths from GET_DB_TRIGGER_DETAIL) and an always-true firing condition (edit it via the condition tools at the condition schema path from GET_DB_TRIGGER_DETAIL).
 
 ### `UPDATE_DB_TRIGGER`
@@ -372,13 +359,14 @@ Get one scheduled trigger's full configuration by id.
 
 ### `ADD_SCHEDULED_TRIGGERS`
 
-Create scheduled (cron) triggers. Each fires a flow (actionFlowId from GET_ALL_ACTION_FLOW_INFOS) on a Quartz cron schedule. IMPORTANT: endInstant defaults to the start, so the schedule never fires unless you set endInstant to a future epoch-millisecond timestamp.
-- `items` *(required)*: `array<{actionFlowId: string, cron?: string, enabled?: boolean, endInstant?: integer, name?: string, startInstant?: integer}>` — Scheduled triggers to create. Each fires its action flow on a cron schedule, with the flow's input args seeded as empty bindings (fill them via the CREATE_*_BINDING tools at the schema paths from GET_SCHEDULED_TRIGGER_DETAIL).
+Create scheduled (cron) triggers. Each fires a flow (actionFlowId from GET_ALL_ACTION_FLOWS_INFO) on a Quartz cron schedule. IMPORTANT: endInstant defaults to the start, so the schedule never fires unless you set endInstant to a future epoch-millisecond timestamp.
+- `items` *(required)*: `array<{actionFlowId: string, cron?: string, cronInputType?: enum(CONFIGURED|CUSTOMIZED), enabled?: boolean, endInstant?: integer, name?: string, startInstant?: integer}>` — Scheduled triggers to create. Each fires its action flow on a cron schedule, with the flow's input args seeded as empty bindings (fill them via the CREATE_*_BINDING tools at the schema paths from GET_SCHEDULED_TRIGGER_DETAIL).
 
 ### `UPDATE_SCHEDULED_TRIGGER`
 
 Update a scheduled trigger by id (cron, active window, target flow, or enabled).
 - `cron`: `string` — New Quartz cron expression (6 fields: second minute hour day-of-month month day-of-week).
+- `cronInputType`: `enum(CONFIGURED|CUSTOMIZED)` — Which editor widget the trigger's schedule is edited with — it has no effect on when the trigger fires, only on how the editor renders it. CUSTOMIZED (the default for new triggers) shows the raw cron expression. CONFIGURED shows a structured cycle form (every minute/hour/day/week/month/year plus month/day/weekday and a time picker), which can only represent simple crons — picking it for a cron the form cannot express (step values like '*/15', ranges, multi-value lists) makes the editor display an approximation and silently rewrite the cron once the user touches the form. Setting this never changes the cron itself; pass `cron` to change that.
 - `enabled`: `boolean` — Whether the trigger is enabled.
 - `endInstant`: `integer` — New epoch-millisecond end timestamp.
 - `name`: `string` — New display name.
@@ -405,6 +393,6 @@ Remove named output fields from a flow (legacy output model).
 Then ship:
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" schema validate && "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project sync-backend
+npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

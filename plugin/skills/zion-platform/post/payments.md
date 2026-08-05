@@ -62,6 +62,6 @@ Payment enablement and WeChat Pay / Alipay configuration are editor-only (Settin
 Context helpers (read-only):
 
 ```bash
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" project metadata
-"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/zion-mcp" logs search --customQueryCondition '<es-condition>'
+npx -y zion-mcp@2.3.0 project metadata
+npx -y zion-mcp@2.3.0 logs search --customQueryCondition '<es-condition>'
 ```

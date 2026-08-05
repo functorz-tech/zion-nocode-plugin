@@ -1,0 +1,10 @@
+{
+  "version": "2",
+  "plugins": [
+    {
+      "id": "zion-nocode",
+      "displayName": "Zion no-code",
+      "source": "./plugin"
+    }
+  ]
+}

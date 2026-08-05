@@ -1,13 +1,13 @@
-# zion-nocode — Claude Code、Codex、Cursor 与 QoderWork 套件
+# zion-nocode — Claude Code、Codex、Cursor、QoderWork 与 Kimi 套件
 
 自动生成 — 请勿手动编辑。技能内容由 `build_scripts/gen-skills.mjs` 生成，
 使用 `node build_scripts/gen-skills.mjs` 重新生成。
 
 `zion-platform` 技能会引导 Claude Code、Codex 或 Cursor 构建 Zion 项目，自动检测当前项目的
-类型系统版本，并路由到相互隔离的对应能力目录。同一组合包提供四份宿主清单 — `.claude-plugin/plugin.json`（Claude Code）、
-`.codex-plugin/plugin.json`（Codex）、`.cursor-plugin/plugin.json`（Cursor）与
-`.qoder-plugin/plugin.json`（QoderWork） — 共享同一套 `skills/`、`hooks/` 与 `bin/`。Cursor 还会使用 `mcp.json` 中声明的 `zion` MCP 服务器；
-Claude Code 与 Codex 则忽略它。其 CLI 配方直接通过 `npx -y zion-mcp@<version>` 调用锁定的已发布 CLI，
+类型系统版本，并路由到相互隔离的对应能力目录。同一组合包提供五份宿主清单 — `.claude-plugin/plugin.json`（Claude Code）、
+`.codex-plugin/plugin.json`（Codex）、`.cursor-plugin/plugin.json`（Cursor）、
+`.qoder-plugin/plugin.json`（QoderWork）与 `.kimi-plugin/plugin.json`（Kimi） — 共享同一套 `skills/`、`hooks/` 与 `bin/`。Cursor 还会使用 `mcp.json` 中声明的 `zion` MCP 服务器；
+Kimi 清单自带 `mcpServers` 与 `sessionStart` 声明；Claude Code 与 Codex 则忽略它们。其 CLI 配方直接通过 `npx -y zion-mcp@<version>` 调用锁定的已发布 CLI，
 该版本锁定运行本套件的确切构建，因此即使 PATH 上全局安装了 `zion-mcp`（或 `zion`）也无法将其覆盖，
 且不依赖宿主暴露 `PLUGIN_ROOT`/`CLAUDE_PLUGIN_ROOT`。随附的 `bin/zion-mcp` 启动器运行相同的
 `npx -y zion-mcp@<version>`，可继续用于本地命令行。

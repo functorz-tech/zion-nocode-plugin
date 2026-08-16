@@ -18,16 +18,16 @@ geo_point→geography. System columns id/created_at/updated_at are read-only —
 insert/_set/_inc.
 
 Media columns are stored as ids, never URLs/paths: single = [col]_id (image→FZ_Image, file→FZ_File,
-video→FZ_Video); lists (image_list/video_list/file_list) = [col]_ids arrays.
+video→FZ_Video). The list forms (image_list / video_list / file_list) are DEPRECATED: read them as
+[col]_ids arrays where an existing project still has one, but do not add new ones.
 
 Relationships (defined by foreign keys) become nested fields: 1:1 / N:1 → a single object (e.g.
 meta: post_meta), 1:N → an array + a [rel]_aggregate object. Filter to-one relations directly;
 to-many use EXISTS semantics.
 
 ## Filtering — the strict operator-first where grammar ([table]_bool_exp)
-This is the RAW GraphQL where shape for hand-written frontend queries and runtime_graphql. It
-is NOT the simplified where the CLI `runtime query` helper accepts (that one is {column:{_op:value}})
-— see schema-table.md for the helper; use this grammar for real GraphQL.
+This is the RAW GraphQL where shape for hand-written frontend queries and raw runtime GraphQL.
+It is NOT the simplified where a typed table helper accepts (that one is {column:{_op:value}}).
 
 Logical: _and:[bool_exp], _or:[bool_exp], _not:bool_exp.
 Relation filters: navigate by the relationship field name to a nested [related]_bool_exp. To-one
@@ -116,8 +116,8 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-npx -y zion-mcp@2.3.0 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-npx -y zion-mcp@2.3.0 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.6.0 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+npx -y zion-mcp@2.6.0 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
 `runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 

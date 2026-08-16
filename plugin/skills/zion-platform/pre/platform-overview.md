@@ -116,7 +116,7 @@ Server-side visual execution graphs used to perform robust operations. They are 
 
 **Node types available inside an Actionflow:** Database (query/insert/update/delete on a table), Call Third-Party API, Run AI (async only), Run Actionflow (sub-flow; sync cannot call async), Set Variable, Permissions (grant/revoke roles), Run Code (JavaScript), Condition (branching), Loop (iterate a list). Current-user and file/media operations are preset integration nodes, not built-in node types. The editor additionally offers a dynamic, server-managed catalog of **preset integration nodes** (the `TEMPLATE_CODE` node type — published templates such as SMS sending or video/AI generation) whose set changes over time, so confirm the current options in the editor or docs rather than assuming a fixed provider.
 
-**Execution modes**: In synchronous flows, all nodes in one synchronous Actionflow invocation execute inside a single database transaction; any node failure rolls back every DB write from that invocation, and the caller blocks waiting for the result. Asynchronous flows are fire-and-forget; only the failing node's DB changes roll back; required for AI agents and video generation. Both modes share a **per-flow total timeout** governed by `ACTION_FLOW_TIMEOUT_MILLISECONDS` — 15 s on free-tier servers, 10 min (600 s) on paid tiers. The budget is for the whole flow, not per node.
+**Execution modes**: In synchronous flows, all nodes in one synchronous Actionflow invocation execute inside a single database transaction; any node failure rolls back every DB write from that invocation, and the caller blocks waiting for the result. Asynchronous flows are fire-and-forget; only the failing node's DB changes roll back; required for AI agents and video generation. Both modes share a **per-flow total timeout** governed by `ACTION_FLOW_TIMEOUT_MILLISECONDS` — 15 s on free-tier servers, 10 min (600 s) on paid tiers. The budget is for the whole flow, not per node, and a flow may override it with its own `timeout`, so a long run that succeeded tells you nothing about which tier you are on.
 
 ---
 
@@ -149,10 +149,14 @@ Whenever a system requires segmented data access (e.g., multi-tenant, department
 * **Preview**: Compiles and builds the current source into a staging release, providing a unique staging URL. Necessary for deep verification testing of custom components and payment simulations.
 * **Publish**: Deploys the code to the production environment for live users. If database tables, APIs, or Actionflows were modified, they must be synchronized using **Sync Backend** to apply schema migrations to production servers.
 
+Mirror, Preview and Publish are things the USER drives from the editor — you cannot open a preview window or ship a release. What you can drive is the backend: load the `runtime` plugin to run an action flow node by node against the real backend, read and write table data as admin or as a given user, and read what the deployed app actually returns. Hand the user anything that needs a browser (visual checks, custom components, a real payment flow, a mini-program audit) and say plainly that it is theirs to do.
+
 ---
 
 ## 8. Diagnostics and Troubleshooting Framework
 
+0. **Reproduce it**:
+   * Run the thing that failed before theorizing about why. `runtime.debug_flow` executes    the draft action flow node by node and reverts its writes, and gives you the per-node    input, output and `traceId` the rest of this framework needs. A bug you have not    reproduced is a bug you are guessing at.
 1. **Check Edit-time Warnings (Error Collector)**:
    * Look for unmapped input parameters, invalid expressions, or variable mismatch warnings    listed under Zion's navigation bar error console.
 2. **Retrieve execution details (Log Service)**:

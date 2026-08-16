@@ -8,7 +8,7 @@ Schema path: array of keys/indices locating a bindable node in the project JSON 
 Type metadata in read results uses exact typeIdentifier values such as `s:p:string` and `u:e:<enumId>`; copy those values verbatim.
 
 ### Binding Kinds
-OPTION: bind to an existing path in the data binding options tree. pathInHierarchicalMenu must be the EXACT complete path, and menu labels are locale-dependent display names (a project may render them in Chinese or English) — so a label can NEVER be guessed. Before the first option binding at a schema path whose tree you have not seen, read it with `BROWSE_DATA_BINDING_OPTIONS` (CRITICAL: Do NOT call `get_options_tree` if the tree is already provided in the context above); afterwards every binding response attaches the refreshed tree for its op's path. Copy every label verbatim from that tree — never invent, translate, or shorten a label — and include every intermediate menu level. If the tree root is a named context (e.g., "List Context"), include it as the first element. CONST_VALUE: set a literal constant (e.g., "Submit", 0, false). FORMULA: compute a value with an operator (text / math / time / array / enum / geography / json groups); discover the available operators before building one. CONDITIONAL: choose the value by branch — define the branches, then build each branch's predicate. DISPLAY_NAME: rename a component's displayed title.
+OPTION: bind to an existing path in the data binding options tree. pathInHierarchicalMenu must be the EXACT complete path, and menu labels are locale-dependent display names (a project may render them in Chinese or English) — so a label can NEVER be guessed. Before the first option binding at a schema path whose tree you have not seen, read it with `BROWSE_DATA_BINDING_OPTIONS` (CRITICAL: Do NOT call `get_options_tree` if the tree is already provided in the context above); afterwards every binding response attaches the refreshed tree for its op's path. Copy every label verbatim from that tree — never invent, translate, or shorten a label — and include every intermediate menu level. If the tree root is a named context (e.g., "List Context"), include it as the first element. CONST_VALUE: set a literal constant (e.g., "Submit", 0, false). FORMULA: compute a value with an operator (text / math / time / array / enum / geography / json groups); discover the available operators before building one. CONDITIONAL: choose the value by branch — define the branches, then build each branch's predicate.
 
 ### Priority
 1. Prefer OPTION (live data) over CONST_VALUE.
@@ -23,6 +23,7 @@ Per-op errors are returned keyed by index. Successful bindings have already land
 
 ### Data Sources Available in Zion
 Database tables (with filters/sorting/limits), page data sources, page variables, global variables, page parameters, logged-in user, list/component item data, Actionflow inputs/outputs, formula results.
+This is the product-wide catalog, NOT what is bindable at any given site — each site exposes only a subset. NEVER assume a category is available: the options tree for the site is authoritative, so read it with `BROWSE_DATA_BINDING_OPTIONS` first and bind only categories it actually lists. If one (e.g. formula data) is absent for that path, it is not valid there — do not attempt it. (Action flows run strictly on the backend, so page data sources never apply inside a flow node.)
 
 ### Request Filters (where / sort)
 A database-query data source — a list/component request, or an action-flow query / update / delete node — carries **request filters**. FIRST call `GET_REQUEST_FILTER_CONTEXT` with the request's (or owning node's) schema path: it returns the table's selectable columns (with the `pathComponents` and `allowedOperators` to use) and the filter entries' `whereSchemaPath` / `sortConfigsSchemaPath`. Copy those paths and column `pathComponents` verbatim — never hand-build them. Queries and component requests carry a LIST of conditional filters (where + sort groups, each gated by its own condition, always including a system Default filter). An action-flow update/delete node instead carries ONE bare where (`supportsConditionalFilters: false` in the context result) — edit it via the single entry's `whereSchemaPath` with the where-condition tools only; the filter-group and sort tools do not apply, and insert nodes have no request filter at all.
@@ -32,31 +33,33 @@ To change a numeric column RELATIVE to its current value (stock, counters, balan
 - Sort: `ADD_REQUEST_SORT_CONFIG` / `UPDATE_REQUEST_SORT_CONFIG` / `DELETE_REQUEST_SORT_CONFIG` / `REORDER_REQUEST_SORT_CONFIGS`.
 
 ### Composing text from fragments and variables
-For any `s:p:string` value that mixes literal fragments with variables — AI prompt templates, titles, labels, messages — do NOT build a stringConcat formula. Append the pieces IN ORDER at the same schema path with operation CONCAT: `CREATE_CONST_BINDING` (operation CONCAT) for each literal fragment, `CREATE_OPTION_BINDING` (operation CONCAT) for each variable. This produces the same inline template the editor's text fields produce and stays editable there. Reserve formulas for real computation (math, time, regex, arrays) — never for simple text templating.
+For any `s:p:string` value that mixes literal fragments with variables — AI prompt templates, titles, labels, messages — do NOT build a stringConcat formula. Build the template at the same schema path with operation CONCAT: `CREATE_CONST_BINDING` for a literal fragment, `CREATE_OPTION_BINDING` for a variable. Each CONCAT appends to the end, so the final order is exactly the order you emit entries — within a call and across consecutive binding calls in the same turn. Emit them in final reading order, interleaving literals and variables — e.g. const_value "Hello ", option user, const_value ", order ", option orderId, const_value " total ", option amount. Never emit all literals then all variables (that puts every label before every variable), and two literal CONCATs in a row merge into one fragment. This produces the same inline template the editor's text fields produce and stays editable there. Reserve formulas for real computation (math, time, regex, arrays) — never for simple text templating.
+A number, boolean, date, time, datetime or color bound into a `s:p:string` slot is converted for display automatically, so bind the option straight to the slot — never wrap it in `toText` or any other conversion operator. Only structured values (lists, objects, media) genuinely need one. `BROWSE_DATA_BINDING_OPTIONS` marks an option with `*` only when the target really cannot take it; an unmarked option needs no conversion step.
 
 ### Formula & Conditional Bindings
 A FORMULA or CONDITIONAL value is built in several steps at the value's schema path, not in a single call.
 - Formula: call `GET_FORMULA_OPERATORS` at the path, then `CREATE_FORMULA_BINDING` with an operator copied verbatim (the wire token, e.g. `-` not SUBTRACT; operation REPLACE). If the operator needs scalar config (e.g. distance unit, rounding mode), read its shape with `GET_FORMULA_CONFIG_OPTIONS` and pass it or apply it later with `SET_FORMULA_CONFIG`. The create result returns `operandSchemaPaths` — fill each operand with an OPTION / CONST_VALUE binding at its returned path, copied verbatim; never derive an operand path yourself.
 - Conditional: `CREATE_CONDITIONAL_BINDING` (seed branches with initialBranchNames; operation REPLACE), add more with `INSERT_CONDITIONAL_DATA`. For each branch, build its predicate with `INSERT_CONDITION_BOOL_EXP`, choose the comparison via `GET_EXPRESSION_CONDITION_OPERATORS` + `UPDATE_EXPRESSION_CONDITION_OPERATOR`, fill both operands with OPTION / CONST_VALUE bindings, and shape the expression with `NEST_CONDITION_BOOL_EXP`, `TOGGLE_CONDITION_BOOL_EXP_AND_OR`, `TOGGLE_CONDITION_BOOL_EXP_NOT`, `DELETE_CONDITION_BOOL_EXP`; then bind the branch's resulting value. The first branch whose predicate is true wins — order them with `REORDER_CONDITIONAL_DATA`.
+- There is no string is-empty operator (`_is_empty` accepts lists only, and `""` is not null): test text emptiness as `stringLength(x) > 0` via a formula binding on the operand.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.6.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
+npx -y zion-mcp@2.6.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.6.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.3.0 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
-npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
-npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
+npx -y zion-mcp@2.6.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.6.0 projects search):
+npx -y zion-mcp@2.6.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.6.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.6.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -66,7 +69,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Intent | `name` | Required `args` |
 |---|---|---|
 | Browse options at a path | `BROWSE_DATA_BINDING_OPTIONS` | `schemaPath` |
-| Expected type at a path | `GET_DATA_BINDING_TYPE` | `schemaPath` |
+| Read the type a path expects | `GET_DATA_BINDING_TYPE` | `schemaPath` |
 | List formula operators | `GET_FORMULA_OPERATORS` | `schemaPath` |
 | Formula config options at a path | `GET_FORMULA_CONFIG_OPTIONS` | `schemaPath` |
 | Bind to a live option | `CREATE_OPTION_BINDING` | `pathInHierarchicalMenu`, `schemaPath` |
@@ -108,8 +111,7 @@ Pick the `CREATE_*` op for the slot — all keyed by `schemaPath`:
   `GET_FORMULA_OPERATORS` (groups GENERIC / TEXT / MATH / TIME / ARRAY / ENUM / GEOGRAPHY / JSON).
 - **CONDITIONAL**: `CREATE_CONDITIONAL_BINDING`, then manage branches and build each predicate with
   the condition-expression ops.
-Check the slot's expected type first with `GET_DATA_BINDING_TYPE`. Per-op errors come back keyed by
-index — fix only the failing entries and retry.
+Per-op errors come back keyed by index — fix only the failing entries and retry.
 
 ### Conditional bindings & predicate expressions
 
@@ -164,9 +166,6 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `menuPath`: `array<string>` — Menu path to drill into, copied verbatim from a truncation marker of a previous call (option names from the tree root). Omit to browse from the root.
 - `rootLevelNameContains`: `string` — Case-insensitive substring that keeps only the matching entries of the level being browsed (the direct children of menuPath, or the tree root when menuPath is omitted); menus and bindable values alike, and never any deeper level. Use it when one level is too wide to read — the surviving branches then get the whole character budget.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the binding slot, taken from a read tool's output; never hand-built.
-
-### `GET_DATA_BINDING_TYPE`
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the target element, taken from a read tool's output (e.g. a conditionSchemaPath / checkSchemaPath from GET_ROLE_DETAIL, node and binding paths from the entity detail tools); never hand-built.
 
 ### `CREATE_OPTION_BINDING`
 - `operation`: `enum(REPLACE|CONCAT)` — Specifies how to apply the data: 'REPLACE' overwrites the current value, 'CONCAT' appends to it. Default is 'REPLACE'.
@@ -275,6 +274,6 @@ Change a sort rule's column and/or direction by its index within the filter's so
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
+npx -y zion-mcp@2.6.0 schema validate && npx -y zion-mcp@2.6.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

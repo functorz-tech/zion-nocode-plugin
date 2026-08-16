@@ -31,8 +31,8 @@ server-side sweep, so a deploy left half-finished overnight is gone the next mor
 No schema session — this ships files, it does not touch the project schema.
 
 ```bash
-npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
-npx -y zion-mcp@2.3.0 site deploy --dir ./dist --target BETA
+npx -y zion-mcp@2.6.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.6.0 site deploy --dir ./dist --target BETA
 ```
 
 `site deploy` does the whole protocol in one call: it scans the directory, declares the
@@ -47,6 +47,12 @@ steps yourself.
 | Where is the site / is an upload stuck? | `site status --target BETA` |
 | Give up on a stuck upload | `site abort --target BETA` |
 
+- **A multi-client project must name the web app**: pass `--appExId <exId>` on every `site` command,
+  so that status and abort address the same site the deploy created. `project set-current` remembers
+  only the project, so without it `site deploy` resolves to the project's backend-only app — which has
+  no site domain — and fails with `UNSUPPORTED_APP_TYPE`. Read the exId from `project metadata` →
+  `apps[]` (the one with `appType: WEB`); an exId from another project fails with `APP_NOT_FOUND`.
+  Single-client projects need no flag.
 - `--dryRun` reports `fileCount`, `totalBytes`, and `skipped` from the filesystem alone —
   no deployment is created. Use it to confirm the directory is the build output before deploying.
 - `--target PROD` **takes the site live and requires a human to approve a GUI dialog**; the agent

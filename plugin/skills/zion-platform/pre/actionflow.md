@@ -4,15 +4,15 @@
 Actionflows are server-side workflows for business logic. They run entirely on the server; the frontend triggers them via "Request – Actionflow" component actions.
 
 ### When to Use an Actionflow
-Do not create an Actionflow merely to proxy CRUD. Simple single-table CRUD should run directly from the frontend when table, column, and row permissions fully express the authorization policy. Reserve Actionflows for genuinely server-side, multi-step, transactional, or orchestrated operations: cross-table atomicity, trusted calculations or secrets, branching or loops, third-party calls, schedules, webhooks, and database triggers. If data permissions cannot express the authorization rule, enforce it server-side here.
+Do not create an Actionflow merely to proxy CRUD. Simple single-table CRUD should run directly from the frontend when table, column, and row permissions fully express the authorization policy. Reserve Actionflows for genuinely server-side, multi-step, transactional, or orchestrated operations: cross-table atomicity, trusted calculations or secrets, loops, AI steps, third-party calls, schedules, webhooks, and database triggers. If data permissions cannot express the authorization rule, enforce it server-side here. A condition on its own is not a reason to build a flow: a check that only decides what the UI does belongs in the frontend, and only a condition that must be guaranteed rather than merely evaluated has to run here, where the client cannot bypass it. That includes authorization checks — if the rule is already expressed in table, column, and row permissions, the frontend may hold the condition, because permissions are enforced on every request and nothing the client sends can bypass them. Wrapping such a check in a flow adds a hop and a second place for the rule to drift, without making it any harder to circumvent.
 
 ### Execution Modes
 Synchronous: all nodes in one synchronous Actionflow invocation execute inside a single database transaction; the caller blocks for the result, and any node error rolls back every DB write from that invocation. Asynchronous: the caller gets a task handle instead of blocking and retrieves the result later — the flow still computes and returns its declared output; only the failing node's DB writes roll back; required for AI agents and video generation.
 
-Both modes share a per-flow total timeout (`ACTION_FLOW_TIMEOUT_MILLISECONDS`): 15 s on free-tier servers, 10 min on paid tiers. The budget is for the entire flow, not per node.
+Both modes share a per-flow total timeout (`ACTION_FLOW_TIMEOUT_MILLISECONDS`): 15 s on free-tier servers, 10 min on paid tiers. The budget is for the entire flow, not per node. A flow can override it with its own `timeout` (`UPDATE_ACTION_FLOW`), so a run outliving the server default means the tier is paid or the flow carries an override — neither of which is readable from here. Do not infer the tier from a run that finished.
 
 ### Triggers
-What fires a flow. Four kinds: Manual (a UI action — no config), scheduled (cron), database-change event, and webhook. Scheduled and database-change triggers are tool-managed: inspect with `GET_ALL_SCHEDULED_TRIGGERS_INFO` / `GET_ALL_DB_TRIGGERS_INFO`, create with `ADD_SCHEDULED_TRIGGERS` (a Quartz cron — set a future `endInstant` or it never fires) and `ADD_DB_TRIGGERS` (a table + INSERT/UPDATE/DELETE), each pointing at a flow id from `GET_ALL_ACTION_FLOWS_INFO` (update/delete variants too). Manual triggers need no setup; webhook triggers are editor-only (no tool) — say so if asked to add one.
+What fires a flow. Four kinds: Manual (a UI action — no config), scheduled (cron), database-change event, and webhook. Scheduled and database-change triggers are tool-managed: inspect with `GET_ALL_SCHEDULED_TRIGGERS_INFO` / `GET_ALL_DB_TRIGGERS_INFO`, create with `ADD_SCHEDULED_TRIGGERS` (a Quartz cron — set a future `endInstant` or it never fires) and `ADD_DB_TRIGGERS` (a table + INSERT/UPDATE/DELETE), each pointing at a flow id from `GET_ALL_ACTION_FLOWS_INFO` (update/delete variants too). Manual triggers need no setup; webhook triggers are managed by the separate `webhook` plugin (`ADD_CALLBACK_TRIGGERS`) — load it to add or edit an incoming HTTP webhook that fires a flow.
 
 ### Node Types
 These are the fixed built-in node types — the only values accepted for a node's `type`:
@@ -77,26 +77,32 @@ Synchronous: all DB changes roll back on error. Asynchronous: only the failing n
 Each save creates a new version. "Sync Backend" required after editing for changes to take effect in production.
 
 ### JavaScript Sandbox (Run Code node)
-Custom Code Blocks run in a synchronous GraalJS server sandbox. No async/await, no require(), no browser APIs. All platform interactions go through the global `context` object: context.getArg(key)                              — retrieve flow input context.setReturn(key, val)                      — pass output to downstream nodes context.runGql(query, variables, options)        — execute DB operations context.callThirdPartyApi(apiId, params)         — invoke a configured REST API context.callActionFlow(flowId, ver, args)        — run a sub-flow synchronously context.createActionFlowTask(flowId, ver, args)  — trigger a sub-flow async context.getSsoUserInfo()                         — get authenticated user profile context.uploadMedia(url, headers)                — stream remote image to asset server context.log(message)                             — emit to Log Service
+Custom Code Blocks run in a synchronous GraalJS server sandbox. No async/await, no require(), no browser APIs. All platform interactions go through the global `context` object: context.getArg(key)                              — retrieve flow input context.setReturn(key, val)                      — pass output to downstream nodes context.runGql(opName, gql, vars, permission)    — execute DB operations context.callThirdPartyApi(apiId, params)         — invoke a configured REST API context.callActionFlow(flowId, ver, args)        — run a sub-flow synchronously context.createActionFlowTask(flowId, ver, args)  — trigger a sub-flow async context.getSsoUserInfo()                         — get authenticated user profile context.uploadMedia(url, headers)                — stream remote image to asset server context.log(message)                             — emit to Log Service
+
+`runGql` takes FOUR arguments and the first one is the operation NAME, not the document: `runGql("GetWords", "query GetWords { theme_word(where: {...}) { word } }", {}, {role: "admin"})`. The name must match the one declared in the document. `vars` is a JS object (not a JSON string) and `permission` is `{role: "<role name>"}` with an optional `sessionVariable` map. Passing the document first is the mistake that costs an afternoon: the arity error, then a String-coercion error naming a type you did not pass, then "permission should have field role" are all the same misalignment reported one argument at a time.
+
+It returns the `data` object directly — `r.theme_word`, never `r.data.theme_word` — and it THROWS on a GraphQL error rather than returning an `errors` array, so there is no envelope to branch on. Do not write defensive code for a response shape you have not seen.
+
+The list above is the methods you will reach for, not the whole API. The complete Context API reference — every method with its parameters and return shape — is the "Develop with Run Code" developer page: find it with `docs.search`, and read it rather than inferring a signature from an error message. Search by title; the page's path is not the same across products.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.6.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
+npx -y zion-mcp@2.6.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.6.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.3.0 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
-npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
-npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
+npx -y zion-mcp@2.6.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.6.0 projects search):
+npx -y zion-mcp@2.6.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.6.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.6.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -112,13 +118,18 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Create flows | `ADD_ACTION_FLOWS` | `items` |
 | Update a flow (name/async/timeout) | `UPDATE_ACTION_FLOW` | `actionFlowId` |
 | Delete flows | `DELETE_ACTION_FLOWS` | `actionFlowIds` |
+| Read flow group config | `GET_ACTION_FLOW_GROUPS` | — |
+| Create flow groups | `ADD_ACTION_FLOW_GROUPS` | `groups` |
+| Rename flow groups | `UPDATE_ACTION_FLOW_GROUPS` | `groups` |
+| Delete flow groups | `DELETE_ACTION_FLOW_GROUPS` | `groupIds` |
+| File flows into a group | `MOVE_ACTION_FLOWS_TO_GROUP` | `items` |
 | Add input params | `ADD_ACTION_FLOW_INPUT_PARAMS` | `actionFlowId`, `items` |
 | Update input params | `UPDATE_ACTION_FLOW_INPUT_PARAMS` | `actionFlowId`, `items` |
 | Delete input params | `DELETE_ACTION_FLOW_INPUT_PARAMS` | `actionFlowId`, `names` |
 | Add a node | `ADD_ACTION_FLOW_NODE` | `actionFlowId`, `afterNodeId`, `node` |
 | Update a node config | `UPDATE_ACTION_FLOW_NODE` | `actionFlowId`, `nodeId` |
 | Delete nodes | `DELETE_ACTION_FLOW_NODES` | `actionFlowId`, `nodeIds` |
-| Reorder a node | `MOVE_ACTION_FLOW_NODE` | — |
+| Reorder a node | `MOVE_ACTION_FLOW_NODES` | `actionFlowId`, `afterNodeId`, `nodeIds` |
 | Add a branch (Condition node) | `ADD_ACTION_FLOW_BRANCH_ITEM` | `actionFlowId`, `branchSeparationId` |
 | Declare flow variables | `ADD_ACTION_FLOW_GLOBAL_VARIABLES` | `actionFlowId`, `items` |
 | Update flow variables | `UPDATE_ACTION_FLOW_GLOBAL_VARIABLES` | `actionFlowId`, `items` |
@@ -126,12 +137,11 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Assign Set-Variable node targets | `ADD_GLOBAL_VARIABLES_NODE_TARGETS` | `actionFlowId`, `nodeId`, `variableKeys` |
 | Remove Set-Variable node targets | `DELETE_GLOBAL_VARIABLES_NODE_TARGETS` | `actionFlowId`, `nodeId`, `variableKeys` |
 | Add a Run Code input | `ADD_CUSTOM_CODE_NODE_INPUT` | `actionFlowId`, `name`, `nodeId` |
-| Rename a Run Code input | `RENAME_CUSTOM_CODE_NODE_INPUT` | — |
+| Rename or retype a Run Code input | `UPDATE_CUSTOM_CODE_NODE_INPUT` | `actionFlowId`, `name`, `nodeId` |
 | Delete a Run Code input | `DELETE_CUSTOM_CODE_NODE_INPUT` | `actionFlowId`, `name`, `nodeId` |
 | Add a Run Code output value | `ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE` | `actionFlowId`, `name`, `nodeId`, `type` |
 | Update a Run Code output value | `UPDATE_CUSTOM_CODE_NODE_OUTPUT_VALUE` | `actionFlowId`, `name`, `nodeId` |
 | Delete a Run Code output value | `DELETE_CUSTOM_CODE_NODE_OUTPUT_VALUE` | `actionFlowId`, `name`, `nodeId` |
-| Rename a node/slot (by path) | `SET_DISPLAY_NAME` | `displayName`, `schemaPath` |
 | Add output fields | `ADD_ACTION_FLOW_OUTPUT_FIELDS` | `actionFlowId`, `items` |
 | Delete output fields | `DELETE_ACTION_FLOW_OUTPUT_FIELDS` | `actionFlowId`, `names` |
 
@@ -183,7 +193,7 @@ narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FI
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.3.0 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.6.0 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -249,7 +259,7 @@ Insert a node immediately after an existing node (afterNodeId). Read node ids fr
 
 Edit a node's display name or type-specific scalar config (e.g. queried table, row limit, target flow). Data-binding config — values, conditions, data sources, mutation fields — is edited with the bindings plugin, not here.
 - `actionFlowId` *(required)*: `string`
-- `config`: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {clearOnConflict?: boolean, onConflict?: {actionType?: enum(DO_NOTHING|UPDATE), constraintName?: string}, tableDisplayName?: string} | QUERY_RECORD → {clearLimit?: boolean, limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId?: string} | THIRD_PARTY_API → {operation?: string, thirdPartyApiId?: string}` — Node-type-specific scalar config to update. Its `type` must match the node's actual type; fields left null are unchanged. Only non-data-binding scalars are editable here — data-binding config (mutation set values, conditions, dataSource, input args, target account, AI message) is edited with the CREATE_*_BINDING tools at the node's schema path, and a query/mutation's conditions/sort live in its `filters` — edit them via GET_REQUEST_FILTER_CONTEXT and the *_REQUEST_* tools at the node's schema path.
+- `config`: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {clearOnConflict?: boolean, onConflict?: {actionType?: enum(none|update), constraintName?: string}, tableDisplayName?: string} | QUERY_RECORD → {clearLimit?: boolean, limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId?: string} | THIRD_PARTY_API → {operation?: string, thirdPartyApiId?: string}` — Node-type-specific scalar config to update. Its `type` must match the node's actual type; fields left null are unchanged. Only non-data-binding scalars are editable here — data-binding config (mutation set values, conditions, dataSource, input args, target account, AI message) is edited with the CREATE_*_BINDING tools at the node's schema path, and a query/mutation's conditions/sort live in its `filters` — edit them via GET_REQUEST_FILTER_CONTEXT and the *_REQUEST_* tools at the node's schema path.
 - `displayName`: `string` — New display name; applies to any node type.
 - `nodeId` *(required)*: `string` — The uniqueId of the node to update.
 
@@ -258,6 +268,13 @@ Edit a node's display name or type-specific scalar config (e.g. queried table, r
 Delete nodes from a flow by id.
 - `actionFlowId` *(required)*: `string`
 - `nodeIds` *(required)*: `array<string>` — uniqueIds of nodes to delete. A leaf node is removed on its own; passing a block start node (BRANCH_SEPARATION / FOR_EACH_START / WHILE_START) removes the entire block. The flow start/end and block boundary/branch-item nodes cannot be deleted directly.
+
+### `MOVE_ACTION_FLOW_NODES`
+
+Move a leaf node to immediately after another node.
+- `actionFlowId` *(required)*: `string`
+- `afterNodeId` *(required)*: `string` — Move the nodes to immediately after this node (its uniqueId). Anchoring on a loop start moves them into the loop body; move them after a whole loop by anchoring on its FOR_EACH_END / WHILE_END, and after a whole branch block by anchoring on its BRANCH_SEPARATION (resolved to its BRANCH_MERGE) — anchor on a BRANCH_ITEM to move them into that arm.
+- `nodeIds` *(required)*: `array<string>` — uniqueIds of the nodes to move. A block start (BRANCH_SEPARATION / FOR_EACH_START / WHILE_START) moves its whole block; a BRANCH_ITEM cannot be moved (reorder branches with REORDER_ACTION_FLOW_BRANCH_ITEMS). The given order is ignored: the nodes are re-chained in the flow's own execution order, so they end up adjacent after the anchor.
 
 ### `ADD_ACTION_FLOW_BRANCH_ITEM`
 
@@ -324,10 +341,6 @@ Remove a named output value from a Run Code node.
 - `name` *(required)*: `string` — Name (key) of the output to remove.
 - `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
 
-### `SET_DISPLAY_NAME`
-- `displayName` *(required)*: `string` — The suggested display name for the target.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The specific schema path in the project where the display name should be set.
-
 ### `GET_DB_TRIGGER_DETAIL`
 
 Get one database-change trigger's full configuration by id.
@@ -360,7 +373,7 @@ Get one scheduled trigger's full configuration by id.
 ### `ADD_SCHEDULED_TRIGGERS`
 
 Create scheduled (cron) triggers. Each fires a flow (actionFlowId from GET_ALL_ACTION_FLOWS_INFO) on a Quartz cron schedule. IMPORTANT: endInstant defaults to the start, so the schedule never fires unless you set endInstant to a future epoch-millisecond timestamp.
-- `items` *(required)*: `array<{actionFlowId: string, cron?: string, cronInputType?: enum(CONFIGURED|CUSTOMIZED), enabled?: boolean, endInstant?: integer, name?: string, startInstant?: integer}>` — Scheduled triggers to create. Each fires its action flow on a cron schedule, with the flow's input args seeded as empty bindings (fill them via the CREATE_*_BINDING tools at the schema paths from GET_SCHEDULED_TRIGGER_DETAIL).
+- `items` *(required)*: `array<{actionFlowId: string, cron?: string, cronInputType?: enum(CONFIGURED|CUSTOMIZED), enabled?: boolean, endInstant?: string, name?: string, startInstant?: string}>` — Scheduled triggers to create. Each fires its action flow on a cron schedule, with the flow's input args seeded as empty bindings (fill them via the CREATE_*_BINDING tools at the schema paths from GET_SCHEDULED_TRIGGER_DETAIL).
 
 ### `UPDATE_SCHEDULED_TRIGGER`
 
@@ -368,9 +381,9 @@ Update a scheduled trigger by id (cron, active window, target flow, or enabled).
 - `cron`: `string` — New Quartz cron expression (6 fields: second minute hour day-of-month month day-of-week).
 - `cronInputType`: `enum(CONFIGURED|CUSTOMIZED)` — Which editor widget the trigger's schedule is edited with — it has no effect on when the trigger fires, only on how the editor renders it. CUSTOMIZED (the default for new triggers) shows the raw cron expression. CONFIGURED shows a structured cycle form (every minute/hour/day/week/month/year plus month/day/weekday and a time picker), which can only represent simple crons — picking it for a cron the form cannot express (step values like '*/15', ranges, multi-value lists) makes the editor display an approximation and silently rewrite the cron once the user touches the form. Setting this never changes the cron itself; pass `cron` to change that.
 - `enabled`: `boolean` — Whether the trigger is enabled.
-- `endInstant`: `integer` — New epoch-millisecond end timestamp.
+- `endInstant`: `string` — New end, as an ISO-8601 date-time with offset (e.g. '2026-12-31T23:59:59+08:00').
 - `name`: `string` — New display name.
-- `startInstant`: `integer` — New epoch-millisecond start timestamp.
+- `startInstant`: `string` — New start, as an ISO-8601 date-time with offset (e.g. '2026-09-01T02:00:00+08:00').
 - `triggerId` *(required)*: `string` — The uniqueId of the scheduled trigger to update.
 
 ### `DELETE_SCHEDULED_TRIGGERS`
@@ -393,6 +406,6 @@ Remove named output fields from a flow (legacy output model).
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
+npx -y zion-mcp@2.6.0 schema validate && npx -y zion-mcp@2.6.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

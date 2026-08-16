@@ -4,22 +4,25 @@
 Zion uses PostgreSQL. Data model changes require "Sync Backend" to take effect online.
 
 ### Capabilities & Limitations
-You can: create and delete tables, fields, relations, and unique constraints; rename a table; rename a column or change its displayName / required / unique / default value.
+You can: create and delete tables, fields, relations, and unique constraints; change a table's displayName / description; change a field's displayName / required / default value.
+Tables and fields are addressed by their displayName in every tool on this plugin.
 
 You CANNOT:
-- Change an existing column's TYPE. To change a type, delete the column and create a new one with the desired type.
+- Rename a table or a field. A systemName is fixed when the entity is created — only its displayName can change afterwards. If a systemName is genuinely wrong, delete and recreate it; recreating a field discards the data already stored in it. Choose systemNames carefully up front.
+- Change an existing column's TYPE, or its uniqueness. To change either, delete the column and create a new one; uniqueness cannot be added later because existing rows may already hold duplicates.
 - Update an existing relation or constraint. To change one, delete it and recreate it.
 - Create formula / computed fields. If the user asks for one, explain that formulas must be configured manually in the editor; do not create them.
 
 ### Column Types
-A column's 'type' is an exact legacy ColumnType name (case-sensitive):
-{{legacyColumnTypes}}.
+A new field's 'basicTypeNameOrTypeId' is a bare primitive type NAME: string, decimal, bigint, boolean, timestamptz, timetz, date, jsonb, image, video, file, geo_point.
 
-Put one of those values directly in a column's 'type' field (e.g. "DECIMAL"). Do not use
-refactored primitive/enum identifiers in this project.
+Pass the name on its own (for example "decimal"). Read results report a field's existing
+type using legacy uppercase names (TEXT, BIGINT); that is the read vocabulary only — when
+creating a field, still pass the primitive name (a column shown as TEXT is created with
+"string"). This project has no enums, so an enum id is never a valid field type here.
 
 ### Naming
-systemName: English snake_case. Tables are nouns or noun phrases, singular not plural ("order", not "orders"), concise (e.g. "user_profile"); fields are snake_case (e.g. "first_name", "is_active"). displayName: user-visible; use the natural Chinese name as the displayName and derive the English snake_case systemName from it (e.g. displayName "用户名" → systemName "user_name").
+systemName: English snake_case. Tables are nouns or noun phrases, singular not plural ("order", not "orders"), concise (e.g. "user_profile"); fields are snake_case (e.g. "first_name", "is_active"). No name may contain a space — not tables, fields, relations, or constraints, and not even the displayName. A systemName is permanent once created; only the displayName can be changed later. displayName: user-visible; use the natural Chinese name as the displayName and derive the English snake_case systemName from it (e.g. displayName "用户名" → systemName "user_name").
 
 ### System Built-ins & Product Context
 Every table has non-deletable built-in fields: id (BIGINT), created_at (TIMESTAMPTZ), updated_at (TIMESTAMPTZ). Do NOT include these when creating a table. Any table, field, or relation where 'editable' is false is system built-in and cannot be modified or deleted. System tables and timezone configurations for Zion:
@@ -58,26 +61,28 @@ To unique-constrain a relation field, use the FK field name ("user_id"), not the
 Use GEO_POINT for coordinates. Never split into separate latitude/longitude fields. A GEO_POINT field auto-generates a companion DECIMAL hack field named "fz_distance_from_<systemName>", where <systemName> is the geo_point's systemName (may differ from its displayName). At request time it returns the distance from the stored geo_point to the user-supplied location in the request. Treat it as a distance-calculation hack — future migration: this will be replaced by formula fields.
 
 ### Constraints
-Only unique constraints supported. Constraint name: lowercase English snake_case, no uppercase. Reference columns by their system name (snake_case), not their display name — for a relation's foreign key use the FK column name ("user_id"). A single-column unique constraint can also be set via a field's 'unique' flag; use a constraint to span multiple columns (composite unique): list the columns' system names. Unique constraints are also the only DB-enforced invariant writers can lean on for atomic insert-if-absent / toggle semantics (insert with on_conflict): whenever the design has "at most one row per X" semantics (a join/like/save table, an idempotency key), create the unique constraint up front — read-check-then-insert cannot be made race-safe without it.
+Only unique constraints supported. Constraint name: lowercase English snake_case, no uppercase. Reference fields by their displayName — for a relation's foreign key use the generated FK field ("user_id"). Uniqueness is fixed when a field is created and cannot be turned on afterwards (existing rows could already hold duplicates), so to make an existing field unique, add a constraint over it. Use a constraint to span multiple fields (composite unique): list the fields' displayNames. Unique constraints are also the only DB-enforced invariant writers can lean on for atomic insert-if-absent / toggle semantics (insert with on_conflict): whenever the design has "at most one row per X" semantics (a join/like/save table, an idempotency key), create the unique constraint up front — read-check-then-insert cannot be made race-safe without it.
+
+A relation's generated FK carries two names, and which one a call wants depends on the call. The schema tools here take displayNames, so a relation named 转译行 gives a FK whose displayName is `转译行_id` — that is what ADD_CONSTRAINTS matches on. The runtime API takes system names, so the same column is `translation_row_id` in a `runtime.query` filter or a `runtime.insert` object. Neither side accepts the other's name, and passing the wrong one reports the field as missing rather than as misnamed. Read both off the field record instead of transliterating one into the other.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.6.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
+npx -y zion-mcp@2.6.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.6.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.3.0 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
-npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
-npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
+npx -y zion-mcp@2.6.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.6.0 projects search):
+npx -y zion-mcp@2.6.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.6.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.6.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -86,28 +91,36 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 | Intent | `name` | Required `args` |
 |---|---|---|
-| Project overview | `GET_PROJECT_OVERVIEW` | — |
-| Entity relation graph | `GET_ENTITY_RELATION_GRAPH` | `entityId`, `entityType` |
 | List table names | `GET_ALL_TABLE_DISPLAY_NAMES` | — |
 | Inspect tables | `GET_TABLES_INFO` | `tableDisplayNames` |
+| List selectable field types | `GET_TABLE_FIELD_SELECTABLE_TYPES` | — |
 | Create tables | `ADD_TABLES` | `items` |
+| Rename tables / edit descriptions | `UPDATE_TABLES` | `items` |
 | Delete tables | `DELETE_TABLES` | `tableDisplayNames` |
+| Reorder tables in the editor list | `REORDER_TABLES` | `reorderedTableDisplayNames` |
 | Add fields/relations | `ADD_FIELDS_AND_RELATIONS` | `fields`, `relations`, `tableDisplayName` |
+| Rename/retype fields, rename relations | `UPDATE_FIELDS_AND_RELATIONS` | `tableDisplayName` |
 | Delete fields/relations | `DELETE_FIELDS_AND_RELATIONS` | `fieldDisplayNames`, `relationFieldDisplayNamesInSourceTable`, `tableDisplayName` |
+| Reorder a table's fields | `REORDER_TABLE_FIELDS` | `reorderedFieldDisplayNames`, `tableDisplayName` |
 | Add unique constraints | `ADD_CONSTRAINTS` | `constraints` |
 | Delete unique constraints | `DELETE_CONSTRAINTS` | `constraints` |
-| Extend a built-in table (add column) | `ADD_TABLE_EXTENSION` | `columnDisplayName`, `tableDisplayName` |
-| Remove a built-in-table extension column | `DELETE_TABLE_EXTENSION` | `columnDisplayName`, `tableDisplayName` |
-| List embedding models (vector columns) | `GET_AVAILABLE_EMBEDDING_MODELS` | — |
+| Reorder a table's unique constraints | `REORDER_CONSTRAINTS` | `reorderedConstraintNames`, `tableDisplayName` |
+| List embedding models | `GET_AVAILABLE_EMBEDDING_MODELS` | — |
+| Enable vector search on a TEXT field | `ADD_TABLE_EXTENSION` | `fieldDisplayName`, `tableDisplayName` |
+| Retune vector search (e.g. change model) | `UPDATE_TABLE_EXTENSION` | `customEmbeddingId`, `fieldDisplayName`, `tableDisplayName` |
+| Disable vector search | `DELETE_TABLE_EXTENSION` | `fieldDisplayName`, `tableDisplayName` |
 
 ## Worked example: create a `post` table
 
+Read the field-type picker first, then copy its `typeIdentifier` values verbatim:
+
 ```bash
-npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.6.0 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
+npx -y zion-mcp@2.6.0 schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
     {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
-      {"apiName":"title","displayName":"title","basicTypeNameOrTypeId":"TEXT","required":true,"defaultValue":""},
-      {"apiName":"view_count","displayName":"view_count","basicTypeNameOrTypeId":"BIGINT","required":true,"defaultValue":0}
+      {"apiName":"title","displayName":"title","typeIdentifier":"STRING","required":true,"defaultValue":""},
+      {"apiName":"view_count","displayName":"view_count","typeIdentifier":"BIGINT","required":true,"defaultValue":0}
     ]}
   ]}}
 ]'
@@ -118,56 +131,78 @@ npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
 
 ### `ADD_TABLES`
+
+Create tables, each with a displayName and its initial fields.
 - `items` *(required)*: `array<{fields: array<object>, relations: array<object>, tableApiName: string, tableDisplayName: string}>`
 
 ### `ADD_FIELDS_AND_RELATIONS`
-- `fields` *(required)*: `array<{apiName: string, basicTypeNameOrTypeId: string, defaultValue?: boolean | string | number, displayName: string, required: boolean}>`
+
+Add relations, via the `relations` argument. Declared on the SOURCE table; the target side and its foreign-key field are generated automatically.
+- `fields` *(required)*: `array<{apiName: string, computed?: boolean, defaultValue?: boolean | string | number | object, displayName: string, required: boolean, typeIdentifier?: string}>`
 - `relations` *(required)*: `array<{fieldApiNameInSourceTable: string, fieldApiNameInTargetTable: string, fieldDisplayNameInSourceTable: string, fieldDisplayNameInTargetTable: string, relationType: string, sourceTableDisplayName: string, targetTableDisplayName: string}>`
 - `tableDisplayName` *(required)*: `string`
 
 ### `DELETE_FIELDS_AND_RELATIONS`
+
+Delete relations, via the `relations` argument. The generated foreign-key field on the target table goes with it.
 - `fieldDisplayNames` *(required)*: `array<string>` — Display names of the fields to delete
 - `relationFieldDisplayNamesInSourceTable` *(required)*: `array<string>` — fieldDisplayNameInSourceTable of the relations to delete
 - `tableDisplayName` *(required)*: `string` — Source table display name
 
 ### `ADD_CONSTRAINTS`
+
+Add unique constraints to a table, spanning one or more of its fields. Use this for composite uniqueness.
 - `constraints` *(required)*: `array<{constraintName: string, constraintType: string, fieldDisplayNames: array<string>, tableDisplayName: string}>`
 
 ### `DELETE_CONSTRAINTS`
+
+Remove unique constraints from a table by constraint name.
 - `constraints` *(required)*: `array<{constraintName: string, tableDisplayName: string}>`
 
 ### `ADD_TABLE_EXTENSION`
-- `columnDisplayName` *(required)*: `string` — Display name of the TEXT column to build the embedding index on.
+
+Enable vector-embedding search on one TEXT field, using a model from GET_AVAILABLE_EMBEDDING_MODELS. Adds hidden embedding and token-count columns the backend maintains; use it when the app needs semantic search over that text rather than exact or prefix matching.
 - `customEmbeddingId`: `string` — Embedding model id (from GET_AVAILABLE_EMBEDDING_MODELS); the platform default when omitted.
+- `fieldDisplayName` *(required)*: `string` — Display name of the TEXT field to build the embedding index on.
+- `tableDisplayName` *(required)*: `string`
+
+### `UPDATE_TABLE_EXTENSION`
+
+Change an existing vector-search extension, e.g. to a different embedding model. Re-embedding is done by the backend.
+- `customEmbeddingId` *(required)*: `string` — Embedding model id (from GET_AVAILABLE_EMBEDDING_MODELS) to switch the index to; it is the only reconfigurable part of an extension.
+- `fieldDisplayName` *(required)*: `string` — Display name of the field whose embedding index is reconfigured.
 - `tableDisplayName` *(required)*: `string`
 
 ### `DELETE_TABLE_EXTENSION`
-- `columnDisplayName` *(required)*: `string`
+
+Remove a table's vector-search extension. The generated embedding columns and their stored vectors go with it.
+- `fieldDisplayName` *(required)*: `string`
 - `tableDisplayName` *(required)*: `string`
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
+npx -y zion-mcp@2.6.0 schema validate && npx -y zion-mcp@2.6.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.
 
 ## Notes & guardrails
 
-- **Column type** goes in `basicTypeNameOrTypeId` using the same UPPERCASE `ColumnType` names from *Column Types* above (`TEXT`, `BIGINT`, `DECIMAL`, …).
+- **Column type** goes in `typeIdentifier`, copied verbatim from `GET_TABLE_FIELD_SELECTABLE_TYPES` (on this project they look like `STRING`) — never assemble or guess one.
+- The picker lists **primitives only** — a pre-refactor project has no enum or custom types. `required` decides nullability.
 - **Destructive ops** (`DELETE_TABLES`, `DELETE_FIELDS_AND_RELATIONS`, `DELETE_CONSTRAINTS`) lose data; list what will be deleted and warn the user.
 - **Type changes** aren't editable: delete + recreate the column.
-- If results look stale, run `npx -y zion-mcp@2.3.0 schema reload`.
+- If results look stale, run `npx -y zion-mcp@2.6.0 schema reload`.
 
 ## Reading & writing deployed rows (runtime backend)
 
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-npx -y zion-mcp@2.3.0 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-npx -y zion-mcp@2.3.0 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-npx -y zion-mcp@2.3.0 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-npx -y zion-mcp@2.3.0 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+npx -y zion-mcp@2.6.0 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.6.0 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+npx -y zion-mcp@2.6.0 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+npx -y zion-mcp@2.6.0 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
 - `insert` must supply every NOT-NULL column; object keys are the column **systemName**.
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.

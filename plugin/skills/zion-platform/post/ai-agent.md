@@ -7,10 +7,17 @@ A ZAI config is an LLM-backed agent the app runs via a "Run AI" action / action-
 `GET_ZAI_MODEL_OPTIONS` returns the models currently selectable in this project. `GET_ALL_ZAI_CONFIGS_INFO` summarizes every agent; `GET_ZAI_CONFIG_DETAIL` returns one agent's full config — its input args (with their map keys), its prompt components each with the **schema path** of its text binding, its output config and structured-output fields, its database/API contexts (with the query schema paths for the request-filter tools), its knowledge base, and its callable tools.
 
 ### Creating & editing
-`ADD_ZAI_CONFIGS` seeds an agent with default empty system + user prompts and plain-text output; adding the first agent also provisions the AI conversation tables/relations/permissions. Edit scalar config (name, description, temperature, maxRound) with `UPDATE_ZAI_CONFIG`. The **model** is required when creating an agent and can be changed via `UPDATE_ZAI_CONFIG`. Call `GET_ZAI_MODEL_OPTIONS` first. If the user did not name a model, choose the single selectable option whose `defaultModel` is true, matching the editor's default; otherwise choose a selectable model whose capabilities fit the request. Copy its exact `customModelIdentifier` ({id, namespace}). Never fabricate or omit the identifier.
+`ADD_ZAI_CONFIGS` seeds an agent with default empty system + user prompts and plain-text output; adding the first agent also provisions the AI conversation tables/relations/permissions. Edit scalar config (name, description, temperature, maxRound) with `UPDATE_ZAI_CONFIG`. The **model** is required when creating an agent and can be changed via `UPDATE_ZAI_CONFIG`. Call `GET_ZAI_MODEL_OPTIONS` first. If the user did not name a model, choose a selectable model whose capabilities fit the request; prefer the one whose `defaultModel` is true, which matches the editor's default. Only models the deployment ships as SYSTEM ever carry that marker — a project whose catalog is all custom models has none, so treat it as a tie-breaker rather than the thing you look for. Copy its exact `customModelIdentifier` ({id, namespace}). Never fabricate or omit the identifier.
+
+### Verifying an agent
+An agent you built or changed is not done until you have run it and read what it answered: a prompt that reads well is not a prompt that works, and structured output is where the difference usually shows. Inside the editor, `zai.debug_chat` runs the DRAFT agent with the input arguments you give it and returns each turn's output — the same debug run the editor's agent tester performs. It needs the editor's draft, so it is unavailable outside it; from elsewhere, invoke the DEPLOYED agent through the runtime API instead. Either way each run is a real model call against the project's AI allowance, so choose the inputs deliberately rather than looping.
+
+`structuredOutput: true` in `GET_ZAI_MODEL_OPTIONS` is what the model's descriptor claims, not something the platform enforces. A model advertising it can still answer with the JSON Schema envelope it was handed instead of an instance of it — `{"type":"object","properties":{…}}` where you expected `{"scene":"…"}` — and nothing downstream rejects that, so the agent looks configured and every consumer of its output is wrong. Read one real answer before building on the shape.
 
 ### Prompts are bindings, not a ZAI tool
 A prompt's text is an ordinary data binding. Read its `valueSchemaPath` from `GET_ZAI_CONFIG_DETAIL` and edit it with the bindings plugin (the CREATE_*_BINDING tools) at that path — there is no ZAI prompt-edit tool.
+
+An agent's own input args are not top-level options: they hang off `Input`, so the menuPath is `["Context", "Input", "<arg name>"]`, beside `Logged in user` and `Current time`. Binding `["Context", "<arg name>"]` fails with "Can not find option … in [Logged in user, Current time, Input]", which reads like the arg does not exist rather than like it is one level further down. `BROWSE_DATA_BINDING_OPTIONS` renders the arg under `Input`, but read the level off its menuPath rather than off the indentation.
 
 ### System AI conversation tables
 Creating the first agent provisions four protected system tables that store agent runs. They are platform-managed (read-only — never add fields to or edit them; for a user-facing chat feature build your own tables instead). Their individual roles, in a 1:n chain:
@@ -44,22 +51,22 @@ External-API context here is workspace HTTP APIs: `ADD_ZAI_CONFIG_API_CONTEXTS` 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.3.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.6.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.3.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.3.0 login
+npx -y zion-mcp@2.6.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.6.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.3.0 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.3.0 projects search):
-npx -y zion-mcp@2.3.0 project set-current --projectExId <exId>
-npx -y zion-mcp@2.3.0 schema load                               # warm the schema session
+npx -y zion-mcp@2.6.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.6.0 projects search):
+npx -y zion-mcp@2.6.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.6.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.3.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.6.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -77,7 +84,6 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Add input args | `ADD_ZAI_CONFIG_INPUT_ARGS` | `configId`, `items` |
 | Update input args | `UPDATE_ZAI_CONFIG_INPUT_ARGS` | `configId`, `items` |
 | Delete input args | `DELETE_ZAI_CONFIG_INPUT_ARGS` | `argKeys`, `configId` |
-| Update knowledge-base config | `UPDATE_ZAI_CONFIG_KNOWLEDGE_BASE` | — |
 | Set output config | `UPDATE_ZAI_CONFIG_OUTPUT` | `configId` |
 
 `ADD_ZAI_CONFIGS` seeds each agent with empty system + user prompt components and a plain-text
@@ -89,7 +95,7 @@ Run AI node (`actionflow.md`) that references the config by id.
 **Choosing a model (no editor needed):** set it with `UPDATE_ZAI_CONFIG`'s `customModelIdentifier` ({id, namespace}). Discover valid ids + features (vision / file support) from the backend descriptor:
 
 ```bash
-npx -y zion-mcp@2.3.0 platform graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
+npx -y zion-mcp@2.6.0 platform graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
 ```
 Copy an `id` (with its `namespace`) back verbatim — never fabricate one — then verify with `GET_ZAI_CONFIG_DETAIL`.
 
@@ -134,6 +140,6 @@ Configure the agent's output: plain streamed text (isStructured=false) or a stru
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.3.0 schema validate && npx -y zion-mcp@2.3.0 project sync-backend
+npx -y zion-mcp@2.6.0 schema validate && npx -y zion-mcp@2.6.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

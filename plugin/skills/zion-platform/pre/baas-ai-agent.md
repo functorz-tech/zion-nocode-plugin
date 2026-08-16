@@ -9,7 +9,10 @@ carries a JSONSchema.
 1. Start — mutation returns just the conversationId:
    mutation ($inputArgs: Map_String_ObjectScalar!, $zaiConfigId: String!) {
      fz_zai_create_conversation(inputArgs:$inputArgs, zaiConfigId:$zaiConfigId) }
-   inputArgs keys are the schema's input keys. Binary inputs (IMAGE/VIDEO/FILE, or arrays of them)
+   inputArgs keys are the agent's generated argKeys — short opaque ids like "dpmfu92py", not the
+   arg names you gave them. They are readable only from the design-time side, in
+   GET_ZAI_CONFIG_DETAIL's input args; there is no way to derive one from an arg's name, and an
+   invocation keyed by the names silently passes nothing. Binary inputs (IMAGE/VIDEO/FILE, or arrays of them)
    use a "_id" suffix on the key and take asset id(s) as values (e.g. the_video → the_video_id:
    1030…; images → images_id: [1020…, …]).
 2. Subscribe on the conversationId:
@@ -29,6 +32,12 @@ COMPLETED again): mutation ($conversationId: Long!, $text: String) {
 Stop an IN_PROGRESS/STREAMING run (returns true): fz_zai_stop_responding(conversationId:…) — calling
 it on a COMPLETED conversation yields a 400 in the GraphQL errors field.
 
+Without a WebSocket, poll the equivalent query instead of subscribing: query ($conversationId: Long!)
+{ fz_zai_conversation_result(conversationId:$conversationId){ conversationId status data
+reasoningContent } }. It reports the same state the subscription would, so a caller that cannot open
+a socket still sees IN_PROGRESS → COMPLETED|FAILED and the final data. Streaming deltas are the one
+thing polling cannot reconstruct — for a partial-token view you need the subscription.
+
 ## Testing against the deployed backend (CLI)
 
 This is a **runtime** spoke — it describes calling a DEPLOYED Zion app's SINGLE auto-generated
@@ -40,8 +49,8 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-npx -y zion-mcp@2.3.0 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-npx -y zion-mcp@2.3.0 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.6.0 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+npx -y zion-mcp@2.6.0 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
 `runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 

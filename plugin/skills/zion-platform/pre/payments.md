@@ -54,13 +54,49 @@ Alipay supports subscriptions via a signed agreement. The start action takes `or
 ### Scope Note
 The agent cannot enable the payment module, set gateway credentials, or edit Actionflow bodies via tools — those are editor actions. The agent CAN design the order table (via the database plugin), and should walk the user step by step through enabling payments, wiring the secure order-creation flow, and adding the `alreadyProcessed` idempotency guard in the payment flow.
 
-## Consultant mode (no direct edits)
+## How to drive it (CLI only)
 
-Payment enablement and WeChat Pay / Alipay configuration are editor-only (Settings → Payment). Use this capability to design the order table with `schema-table.md` and guide the user through the auto-generated WeChat Pay / Alipay Actionflows and webhook wiring. Enforce the secure transaction pattern — never compute price on the client; fulfill only in the idempotent webhook Actionflow.
-
-Context helpers (read-only):
+All commands are `npx -y zion-mcp@2.6.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.3.0 project metadata
-npx -y zion-mcp@2.3.0 logs search --customQueryCondition '<es-condition>'
+npx -y zion-mcp@2.6.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.6.0 login
+# create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
+npx -y zion-mcp@2.6.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.6.0 projects search):
+npx -y zion-mcp@2.6.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.6.0 schema load                               # warm the schema session
 ```
+
+Operations run through one verb:
+
+```bash
+npx -y zion-mcp@2.6.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+```
+Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
+A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
+
+## Operation reference (`schema tool-call` names)
+
+| Intent | `name` | Required `args` |
+|---|---|---|
+| Turn payments on, naming the order table | `ACTIVATE_PAYMENT` | `paymentType` |
+
+Activation is the part you can drive: it provisions the payment tables and the auto-generated WeChat Pay / Alipay Actionflows and webhooks. Pass `orderTableDisplayName` on first activation only — an existing table you designed with `schema-table.md`. The WeChat Pay / Alipay credentials and provider settings stay editor-only (Settings → Payment), so hand those to the user.
+
+Enforce the secure transaction pattern — never compute price on the client; fulfill only in the idempotent webhook Actionflow (`webhook.md`). Provider callbacks arrive `managed: true` and reject every edit.
+
+## Arguments (generated from ztype)
+
+Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
+
+### `ACTIVATE_PAYMENT`
+- `orderTableDisplayName`: `string` — Display name of the existing table to use as the order table. Required on first activation (when no payment tables exist yet); ignored afterwards — the order table is then resolved from the existing order→payment relation.
+- `paymentType` *(required)*: `enum(STRIPE|AIRWALLEX|ALIPAY|WECHAT)` — Payment type to activate. Which types are selectable depends on the product/client (ZION mini-program: WECHAT only; ZION otherwise: WECHAT/ALIPAY/AIRWALLEX; MOMEN: STRIPE/AIRWALLEX).
+
+Then ship:
+
+```bash
+npx -y zion-mcp@2.6.0 schema validate && npx -y zion-mcp@2.6.0 project sync-backend
+```
+`project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

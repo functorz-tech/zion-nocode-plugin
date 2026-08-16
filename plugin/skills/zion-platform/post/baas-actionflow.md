@@ -14,14 +14,18 @@ Async actionflow — each node in its own transaction (no global rollback); requ
 AI-agent nodes, and video generation. Two steps:
 1. mutation ($args: Json!) { fz_create_action_flow_task(actionFlowId:"…", versionId:N, args:$args) }
    → returns a taskId (Long).
-2. subscription ($taskId: Long!) { fz_listen_action_flow_result(taskId:$taskId){ output status } }
-   Several messages may arrive; status transitions CREATED → PROCESSING → COMPLETED|FAILED. The
-   final output lives in the COMPLETED message's output field.
+2. Read the result either by subscription — subscription ($taskId: Long!) {
+   fz_listen_action_flow_result(taskId:$taskId){ output status } } — or, without a WebSocket, by
+   polling the equivalent query: query ($taskId: Long!) { fz_action_flow_result(taskId:$taskId){
+   output status } }. Status transitions CREATED → PROCESSING → COMPLETED|FAILED; the final output
+   lives in the COMPLETED payload's output field.
 
-fz_invoke_action_flow returns the Json scalar — a LEAF field: no sub-selection on the result; parse
-it client-side. Always pass $args as one whole Json variable, never assembled inline in the query
-string. Permission failures surface as errorCode 403 entries in the GraphQL errors array
-(classification ACTION_FLOW) — anonymous users commonly lack invoke permission.
+fz_invoke_action_flow runs the DEPLOYED version of the flow — edits made in the editor since the
+last backend sync are not exercised by it. It returns the Json scalar — a LEAF field: no
+sub-selection on the result; parse it client-side. Always pass $args as one whole Json variable,
+never assembled inline in the query string. Permission failures surface as errorCode 403 entries in
+the GraphQL errors array (classification ACTION_FLOW) — anonymous users commonly lack invoke
+permission.
 
 ## Testing against the deployed backend (CLI)
 
@@ -34,8 +38,8 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-npx -y zion-mcp@2.3.0 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-npx -y zion-mcp@2.3.0 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.6.0 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+npx -y zion-mcp@2.6.0 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
 `runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 

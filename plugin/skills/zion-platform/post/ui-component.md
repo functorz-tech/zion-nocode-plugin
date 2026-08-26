@@ -109,7 +109,8 @@ Pages have NO separate query list — a page query IS a read-only page variable 
 - REFRESH re-runs queries of its targets (a PAGE/MODAL with page queries, or a query-bearing LIST / DATA_SELECTOR / SELECT_VIEW). Prefer a MUTATION's refreshOnSuccess when the refresh should follow a write.
 - SET_VARIABLE_DATA writes a page/modal variable created with `ADD_COMPONENT_VARIABLES`: send the owning component's verified {targetComponentId, targetDisplayName} pair plus variableName, and fill the seeded `value` slot. Read-only variables (page queries) cannot be written.
 - HIDE_MODAL closes a MODAL by its verified {modalId, modalDisplayName} pair, the mirror of SHOW_MODAL. LOG records a titled line plus one fillable slot per name in argNames. AUDIO and LOTTIE play/pause/stop their media.
-- USER_LOGIN signs a user in or out. There is NO separate sign-up action: a sign-up button is USER_LOGIN with createAccountOnLogin, which creates the account when no user matches. Pick identifierType (email / phone / username) and credentialType (password / verificationCode), then fill the two seeded slots — loginCredential.accountIdentifier and loginCredential.credential — from the form's inputs. logout takes no credential.
+- USER_LOGIN signs a user in or out. For a sign-in pick identifierType (EMAIL / PHONE / USERNAME) and credentialType (PASSWORD / VERIFICATION_CODE): it builds the per-method login the editor's own picker builds, with two seeded slots — the identifier and the credential, named in bindableSchemaPaths — to fill from the form's inputs. logout takes no credential. Its createAccountOnLogin flag is just an alias for SIGN_UP, building the same register action, so reach for SIGN_UP directly.
+- SIGN_UP is the sign-up button, and it is a separate action from USER_LOGIN. Pick identifierType: USERNAME fills username + password, while EMAIL and PHONE fill their address plus a verificationCode you send with SEND_VERIFICATION_CODE (purpose register). Those two also offer a password, unbound by default — the editor's own "use password" switch — and it decides what the account can sign in with later: leave it empty and the account has no password, so a USER_LOGIN with credentialType PASSWORD against it can never succeed for anyone who signed up here. Build the pair together: fill the password path the add echo returns, or sign in with VERIFICATION_CODE.
 - SEND_VERIFICATION_CODE / CHECK_VERIFICATION_CODE send a code to an email or phone and verify what the user typed; fill their target (and verificationCode) slots from the form's inputs, and chain what happens next onto onSuccess / onFailure.
 - GET_LOCATION, UPLOAD_FILE and GENERATE_QR_CODE produce a RESULT, and the only way to keep it is assignToVariable — a writable page variable created with `ADD_COMPONENT_VARIABLES` on the page the component sits on. Their success actions cannot see the result, so an action without assignToVariable runs and throws its result away. Create the variable first.
 - SCHEDULED_JOB_CONTROL starts or pauses a page timer. Scheduled jobs are created in the editor's page Action panel and NO tool creates one, so if the page has none, say so and ask the user to add the job — do not try to build it.
@@ -121,22 +122,22 @@ Pages have NO separate query list — a page query IS a read-only page variable 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.6.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.6.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.6.2 login
+npx -y zion-mcp@2.7.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.6.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.6.2 projects search):
-npx -y zion-mcp@2.6.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.6.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.0 projects search):
+npx -y zion-mcp@2.7.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.6.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -151,13 +152,33 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Data/vars in scope at a component | `GET_COMPONENT_CONTEXT_INFO` | `componentId` |
 | Container children info | `GET_CONTAINER_CHILDREN_INFO` | `componentId` |
 | Switch a TAB_VIEW between built-in and custom tabs | `SET_TAB_VIEW_TAB_MODE` | `componentId`, `displayName`, `mode` |
+| Native tab bar: state, colours, slots | `GET_TAB_BAR_INFO` | — |
+| Show or hide the native tab bar | `SET_TAB_BAR_ENABLED` | `enabled` |
+| Point a tab-bar slot at a page | `UPDATE_TAB_BAR_ITEMS` | `items` |
+| Colour the tab bar | `UPDATE_TAB_BAR_STYLE` | — |
+| Duplicate components with their subtrees | `DUPLICATE_COMPONENTS` | `componentIds` |
+| Append one event's action handlers to another | `DUPLICATE_COMPONENT_ACTIONS` | `componentId`, `displayName`, `eventType`, `sourceComponentId` |
+| Whole theme: variables + scrollbar | `GET_THEME_INFO` | — |
+| Add theme variables | `ADD_THEME_VARIABLES` | `items` |
+| Rename or revalue theme variables | `UPDATE_THEME_VARIABLES` | `items` |
+| Delete theme variables (presets rejected) | `DELETE_THEME_VARIABLES` | `items` |
+| Scrollbar appearance (web only) | `SET_SCROLLBAR_STYLE` | — |
 | Remove colour-palette entries | `DELETE_COLOR_THEMES` | `items` |
+| Theme variables, all categories, plus scrollbar style | `GET_THEME_INFO` | — |
+| Add theme variables | `ADD_THEME_VARIABLES` | `items` |
+| Rename a theme variable or replace its value | `UPDATE_THEME_VARIABLES` | `items` |
+| Remove theme variables | `DELETE_THEME_VARIABLES` | `items` |
+| Scrollbar appearance, web only | `SET_SCROLLBAR_STYLE` | — |
 
 Component writes go through the CLI like any other edit: `GET_COMPONENT_TEMPLATE` then `ADD_COMPONENT` to build, `UPDATE_COMPONENT_STYLE` to restyle, `MOVE_COMPONENTS` to restructure, `ADD_COMPONENT_ACTIONS` to wire events, `DELETE_COMPONENTS` to remove — see "Building & Editing the Component Tree" above. Two limits are real. A project still on the legacy component model rejects every component write with `TRACK_MISMATCH` and says so; when that happens, give the user numbered editor steps instead. And you cannot see what you built — the editor canvas and error center are not reachable from here, so a screen can be schema-valid and still look wrong. Verify structurally with `GET_CONTAINER_CHILDREN_INFO` and `GET_INCOMPLETE_STRUCTURES` (its `responsiveRisks` catches the desktop-width-on-phone case), and where appearance is the acceptance criterion, prefer handing the user steps over guessing.
+
+Theme variables carry a value whose shape differs per category, and that shape is not documented per category — read `GET_THEME_INFO` first and copy the shape of an existing variable in the same category, the same way component styles are copied from `GET_COMPONENT_TYPE_CAPABILITIES`. Preset variables cannot be deleted: their ids are what bindings and the theme algorithm resolve against. A component still bound to a deleted variable falls back to no value rather than erroring, so it goes wrong silently — check usages before removing one.
+
+The preset tab-bar icon library is not reachable from here either. A shown tab needs an icon for both its normal and its selected state or the project reports an error, and those exIds are not derivable — `GET_TAB_BAR_INFO` reads back what the slots already hold, so a re-point can reuse those, but a slot with no icon needs one brought in through the editor (`web-assets.md`) or picked there by the user.
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.6.2 schema validate && npx -y zion-mcp@2.6.2 project sync-backend
+npx -y zion-mcp@2.7.0 schema validate && npx -y zion-mcp@2.7.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

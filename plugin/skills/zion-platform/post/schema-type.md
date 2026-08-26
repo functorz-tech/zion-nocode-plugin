@@ -33,26 +33,26 @@ Field types are TypeIdentifier strings: `s:p:<primitive>` (string, bigint, decim
 
 There is no field-level update: renaming or retyping a field means delete + re-add, which breaks anything bound to the old field — check usages and warn the user first. Deleting a type that is still referenced breaks those references the same way.
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.6.2 schema status` → `typeSystem`.
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.7.0 schema status` → `typeSystem`.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.6.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.6.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.6.2 login
+npx -y zion-mcp@2.7.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.6.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.6.2 projects search):
-npx -y zion-mcp@2.6.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.6.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.0 projects search):
+npx -y zion-mcp@2.7.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.6.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -71,6 +71,10 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Delete enum groups | `DELETE_ENUM_DEFINITION_GROUPS` | `groupIds` |
 | File enums into a group | `MOVE_ENUM_DEFINITIONS_TO_GROUP` | `items` |
 | List object types | `GET_ALL_OBJECT_DEFINITIONS` | — |
+| Rename or retype an object type's fields | `UPDATE_TYPE_DEFINITION_FIELDS` | `fields`, `typeId` |
+| Reorder an object type's fields | `REORDER_TYPE_DEFINITION_FIELDS` | `orderedFieldNames`, `typeId` |
+| Publish a private object type as reusable | `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` | `displayName`, `typeId` |
+| Take a private copy of a public object type | `COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE` | `typeId` |
 | Read object-type group config (before adding a type) | `GET_OBJECT_TYPE_DEFINITION_GROUPS` | — |
 | Add object types | `ADD_OBJECT_TYPE_DEFINITIONS` | `types` |
 | Update object types | `UPDATE_OBJECT_TYPE_DEFINITIONS` | `types` |
@@ -79,13 +83,17 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Rename object-type groups | `UPDATE_OBJECT_TYPE_DEFINITION_GROUPS` | `groups` |
 | Delete object-type groups | `DELETE_OBJECT_TYPE_DEFINITION_GROUPS` | `groupIds` |
 | File object types into a group | `MOVE_OBJECT_TYPE_DEFINITIONS_TO_GROUP` | `items` |
+| Rename/retype an object type's fields in place | `UPDATE_TYPE_DEFINITION_FIELDS` | `fields`, `typeId` |
+| Reorder an object type's fields | `REORDER_TYPE_DEFINITION_FIELDS` | `orderedFieldNames`, `typeId` |
+| Publish a private object type as a reusable one | `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` | `displayName`, `typeId` |
+| Take a private copy of a public object type | `COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE` | `typeId` |
 | Add fields to an object type | `ADD_TYPE_DEFINITION_FIELDS` | `fields`, `typeId` |
 | Delete fields from an object type | `DELETE_TYPE_DEFINITION_FIELDS` | `fieldNames`, `typeId` |
 
 ## Worked example: an OrderStatus enum
 
 ```bash
-npx -y zion-mcp@2.6.2 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[
   {"name":"ADD_ENUM_DEFINITIONS","args":{"enums":[
     {"name":"OrderStatus","displayName":"OrderStatus","options":[
       {"value":"PENDING","displayName":"PENDING"},
@@ -129,6 +137,6 @@ Add fields to an existing object type.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.6.2 schema validate && npx -y zion-mcp@2.6.2 project sync-backend
+npx -y zion-mcp@2.7.0 schema validate && npx -y zion-mcp@2.7.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

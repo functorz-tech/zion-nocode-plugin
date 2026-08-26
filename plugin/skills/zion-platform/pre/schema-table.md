@@ -13,6 +13,9 @@ You CANNOT:
 - Update an existing relation or constraint. To change one, delete it and recreate it.
 - Create formula / computed fields. If the user asks for one, explain that formulas must be configured manually in the editor; do not create them.
 
+### Every table edit rewrites role permissions
+Creating or deleting a table, and adding, retyping or deleting a field, rewrites the role permissions keyed to that table. Nobody asks for it, and a new table lands in every role including Anonymous User, so the grants you end up with are not the ones you chose. Each of those results names the roles it changed. Before changing one of them, read that role with GET_ROLE_DETAIL: a permission write is rejected until the role has been read in this session, and the role you would reach for is one your own table edit just moved.
+
 ### Column Types
 A new field's 'basicTypeNameOrTypeId' is a bare primitive type NAME: string, decimal, bigint, boolean, timestamptz, timetz, date, jsonb, image, video, file, geo_point.
 
@@ -67,22 +70,22 @@ A relation's generated FK carries two names, and which one a call wants depends 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.6.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.6.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.6.2 login
+npx -y zion-mcp@2.7.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.6.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.6.2 projects search):
-npx -y zion-mcp@2.6.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.6.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.0 projects search):
+npx -y zion-mcp@2.7.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.6.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -98,9 +101,9 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Rename tables / edit descriptions | `UPDATE_TABLES` | `items` |
 | Delete tables | `DELETE_TABLES` | `tableDisplayNames` |
 | Reorder tables in the editor list | `REORDER_TABLES` | `reorderedTableDisplayNames` |
-| Add fields/relations | `ADD_FIELDS_AND_RELATIONS` | `fields`, `relations`, `tableDisplayName` |
+| Add fields/relations | `ADD_FIELDS_AND_RELATIONS` | `tableDisplayName` |
 | Rename/retype fields, rename relations | `UPDATE_FIELDS_AND_RELATIONS` | `tableDisplayName` |
-| Delete fields/relations | `DELETE_FIELDS_AND_RELATIONS` | `fieldDisplayNames`, `relationFieldDisplayNamesInSourceTable`, `tableDisplayName` |
+| Delete fields/relations | `DELETE_FIELDS_AND_RELATIONS` | `tableDisplayName` |
 | Reorder a table's fields | `REORDER_TABLE_FIELDS` | `reorderedFieldDisplayNames`, `tableDisplayName` |
 | Add unique constraints | `ADD_CONSTRAINTS` | `constraints` |
 | Delete unique constraints | `DELETE_CONSTRAINTS` | `constraints` |
@@ -115,8 +118,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 Read the field-type picker first, then copy its `typeIdentifier` values verbatim:
 
 ```bash
-npx -y zion-mcp@2.6.2 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
-npx -y zion-mcp@2.6.2 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
+npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
     {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
       {"apiName":"title","displayName":"title","typeIdentifier":"STRING","required":true,"defaultValue":""},
@@ -133,20 +136,20 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 ### `ADD_TABLES`
 
 Create tables, each with a displayName and its initial fields.
-- `items` *(required)*: `array<{fields: array<object>, relations: array<object>, tableApiName: string, tableDisplayName: string}>`
+- `items` *(required)*: `array<{fields: array<object>, relations?: array<object>, tableApiName: string, tableDisplayName: string}>`
 
 ### `ADD_FIELDS_AND_RELATIONS`
 
-Add relations, via the `relations` argument. Declared on the SOURCE table; the target side and its foreign-key field are generated automatically.
-- `fields` *(required)*: `array<{apiName: string, computed?: boolean, defaultValue?: boolean | string | number | object, displayName: string, required: boolean, typeIdentifier?: string}>`
-- `relations` *(required)*: `array<{fieldApiNameInSourceTable: string, fieldApiNameInTargetTable: string, fieldDisplayNameInSourceTable: string, fieldDisplayNameInTargetTable: string, relationType: string, sourceTableDisplayName: string, targetTableDisplayName: string}>`
+Add fields and relations to one table, addressed by displayName. Each field's `typeIdentifier` comes verbatim from GET_TABLE_FIELD_SELECTABLE_TYPES — never assemble one by hand. Relations go in the `relations` argument, declared on the SOURCE table; the target side and its foreign-key field are generated automatically, so never add a manual foreign-key field instead. Send whichever of the two lists the change needs; omit the other.
+- `fields`: `array<{apiName: string, computed?: boolean, defaultValue?: boolean | string | number | object, displayName: string, required: boolean, typeIdentifier?: string}>`
+- `relations`: `array<{fieldApiNameInSourceTable: string, fieldApiNameInTargetTable: string, fieldDisplayNameInSourceTable: string, fieldDisplayNameInTargetTable: string, relationType: string, sourceTableDisplayName: string, targetTableDisplayName: string}>`
 - `tableDisplayName` *(required)*: `string`
 
 ### `DELETE_FIELDS_AND_RELATIONS`
 
-Delete relations, via the `relations` argument. The generated foreign-key field on the target table goes with it.
-- `fieldDisplayNames` *(required)*: `array<string>` — Display names of the fields to delete
-- `relationFieldDisplayNamesInSourceTable` *(required)*: `array<string>` — fieldDisplayNameInSourceTable of the relations to delete
+Delete fields and relations from one table by displayName — fields in `fieldDisplayNames`, relations in `relationFieldDisplayNamesInSourceTable`. Send whichever list the change needs and omit the other. Data stored in a deleted field is lost, and a deleted relation takes the generated foreign-key field on the target table with it.
+- `fieldDisplayNames`: `array<string>` — Display names of the fields to delete
+- `relationFieldDisplayNamesInSourceTable`: `array<string>` — fieldDisplayNameInSourceTable of the relations to delete
 - `tableDisplayName` *(required)*: `string` — Source table display name
 
 ### `ADD_CONSTRAINTS`
@@ -182,7 +185,7 @@ Remove a table's vector-search extension. The generated embedding columns and th
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.6.2 schema validate && npx -y zion-mcp@2.6.2 project sync-backend
+npx -y zion-mcp@2.7.0 schema validate && npx -y zion-mcp@2.7.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.
 
@@ -192,17 +195,17 @@ npx -y zion-mcp@2.6.2 schema validate && npx -y zion-mcp@2.6.2 project sync-back
 - The picker lists **primitives only** — a pre-refactor project has no enum or custom types. `required` decides nullability.
 - **Destructive ops** (`DELETE_TABLES`, `DELETE_FIELDS_AND_RELATIONS`, `DELETE_CONSTRAINTS`) lose data; list what will be deleted and warn the user.
 - **Type changes** aren't editable: delete + recreate the column.
-- If results look stale, run `npx -y zion-mcp@2.6.2 schema reload`.
+- If results look stale, run `npx -y zion-mcp@2.7.0 schema reload`.
 
 ## Reading & writing deployed rows (runtime backend)
 
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-npx -y zion-mcp@2.6.2 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-npx -y zion-mcp@2.6.2 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-npx -y zion-mcp@2.6.2 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-npx -y zion-mcp@2.6.2 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+npx -y zion-mcp@2.7.0 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.0 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+npx -y zion-mcp@2.7.0 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+npx -y zion-mcp@2.7.0 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
 - `insert` must supply every NOT-NULL column; object keys are the column **systemName**.
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.

@@ -52,20 +52,20 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-npx -y zion-mcp@2.7.1 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-npx -y zion-mcp@2.7.1 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.2 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+npx -y zion-mcp@2.7.2 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
 `runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 
 ## How to drive it (CLI)
 
 ```bash
-npx -y zion-mcp@2.7.1 runtime query --tableName order --where '{"status":{"_eq":"PAID"}}' --fields '["id","status","total"]'
-npx -y zion-mcp@2.7.1 runtime insert --tableName order --objects '[{"status":"PAID","total":100}]'
-npx -y zion-mcp@2.7.1 runtime update --tableName order --where '{"id":{"_eq":42}}' --set '{"status":"SHIPPED"}'
-npx -y zion-mcp@2.7.1 runtime delete --tableName order --where '{"id":{"_eq":42}}'
-npx -y zion-mcp@2.7.1 runtime graphql --query 'query { order_aggregate { aggregate { count } } }'
-npx -y zion-mcp@2.7.1 runtime run-code --jsCode 'const total = 2 + 2; total;'
+npx -y zion-mcp@2.7.2 runtime query --tableName order --where '{"status":{"_eq":"PAID"}}' --fields '["id","status","total"]'
+npx -y zion-mcp@2.7.2 runtime insert --tableName order --objects '[{"status":"PAID","total":100}]'
+npx -y zion-mcp@2.7.2 runtime update --tableName order --where '{"id":{"_eq":42}}' --set '{"status":"SHIPPED"}'
+npx -y zion-mcp@2.7.2 runtime delete --tableName order --where '{"id":{"_eq":42}}'
+npx -y zion-mcp@2.7.2 runtime graphql --query 'query { order_aggregate { aggregate { count } } }'
+npx -y zion-mcp@2.7.2 runtime run-code --jsCode 'const total = 2 + 2; total;'
 ```
 
 `runtime run-code` executes the snippet in the app's Run Code sandbox and returns its value, with
@@ -77,13 +77,13 @@ These run against the **deployed** app through the admin channel, which bypasses
 permissions — a row you can read here is not necessarily a row your users can read.
 
 ### Yours alone
-Both you and the in-editor agent can deploy the backend — `npx -y zion-mcp@2.7.1 project sync-backend` here,
+Both you and the in-editor agent can deploy the backend — `npx -y zion-mcp@2.7.2 project sync-backend` here,
 `deploy.sync_backend` there — and either way the loop is the same: edit, deploy, then test what
 you deployed, because a runtime call always hits the DEPLOYED app. These two have no in-editor
 counterpart at all:
 
-- `npx -y zion-mcp@2.7.1 schema validate` — type-check the loaded schema before deploying it.
-- `npx -y zion-mcp@2.7.1 site deploy` — ship a built frontend directory, with `site status` / `site abort` for the run; a PROD target needs a human to approve it.
+- `npx -y zion-mcp@2.7.2 schema validate` — type-check the loaded schema before deploying it.
+- `npx -y zion-mcp@2.7.2 site deploy` — ship a built frontend directory, with `site status` / `site abort` for the run; a PROD target needs a human to approve it.
 
 ### Not available from this CLI
 The verification contract above is written for the in-editor agent, which has tools this CLI does

@@ -70,22 +70,22 @@ A relation's generated FK carries two names, and which one a call wants depends 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.1 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.0 login
+npx -y zion-mcp@2.7.1 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.1 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.0 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.0 projects search):
-npx -y zion-mcp@2.7.0 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.0 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.1 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.1 projects search):
+npx -y zion-mcp@2.7.1 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.1 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.1 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -118,8 +118,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 Read the field-type picker first, then copy its `typeIdentifier` values verbatim:
 
 ```bash
-npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
-npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.1 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
+npx -y zion-mcp@2.7.1 schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
     {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
       {"apiName":"title","displayName":"title","typeIdentifier":"STRING","required":true,"defaultValue":""},
@@ -185,7 +185,7 @@ Remove a table's vector-search extension. The generated embedding columns and th
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.0 schema validate && npx -y zion-mcp@2.7.0 project sync-backend
+npx -y zion-mcp@2.7.1 schema validate && npx -y zion-mcp@2.7.1 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.
 
@@ -195,17 +195,17 @@ npx -y zion-mcp@2.7.0 schema validate && npx -y zion-mcp@2.7.0 project sync-back
 - The picker lists **primitives only** — a pre-refactor project has no enum or custom types. `required` decides nullability.
 - **Destructive ops** (`DELETE_TABLES`, `DELETE_FIELDS_AND_RELATIONS`, `DELETE_CONSTRAINTS`) lose data; list what will be deleted and warn the user.
 - **Type changes** aren't editable: delete + recreate the column.
-- If results look stale, run `npx -y zion-mcp@2.7.0 schema reload`.
+- If results look stale, run `npx -y zion-mcp@2.7.1 schema reload`.
 
 ## Reading & writing deployed rows (runtime backend)
 
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-npx -y zion-mcp@2.7.0 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-npx -y zion-mcp@2.7.0 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-npx -y zion-mcp@2.7.0 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-npx -y zion-mcp@2.7.0 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+npx -y zion-mcp@2.7.1 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.1 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+npx -y zion-mcp@2.7.1 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+npx -y zion-mcp@2.7.1 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
 - `insert` must supply every NOT-NULL column; object keys are the column **systemName**.
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.

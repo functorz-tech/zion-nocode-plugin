@@ -84,22 +84,22 @@ The list above is the methods you will reach for, not the whole API. The complet
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.1 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.0 login
+npx -y zion-mcp@2.7.1 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.1 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.0 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.0 projects search):
-npx -y zion-mcp@2.7.0 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.0 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.1 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.1 projects search):
+npx -y zion-mcp@2.7.1 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.1 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.1 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -191,7 +191,7 @@ narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FI
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.0 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.1 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -394,6 +394,6 @@ Clear the flow's single typed output value.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.0 schema validate && npx -y zion-mcp@2.7.0 project sync-backend
+npx -y zion-mcp@2.7.1 schema validate && npx -y zion-mcp@2.7.1 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

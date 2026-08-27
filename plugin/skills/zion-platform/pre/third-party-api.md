@@ -34,30 +34,30 @@ To onboard an existing API, prefer `tpa import-from-openapi` over hand-building 
 The import tools described above are CLI verbs here — prefer them over hand-building configs:
 
 ```bash
-npx -y zion-mcp@2.7.0 tpa fetch-doc --url "https://api.example.com/docs"          # read a docs page: Markdown content, same-site pageLinks, OpenAPI specLinks; --offset to keep reading
-npx -y zion-mcp@2.7.0 tpa import-from-openapi --url "https://api.example.com/openapi.json" --pathsFilter /users /orders   # spec URL (or --specText '<json|yaml>'); pathsFilter values are space-separated substrings
+npx -y zion-mcp@2.7.1 tpa fetch-doc --url "https://api.example.com/docs"          # read a docs page: Markdown content, same-site pageLinks, OpenAPI specLinks; --offset to keep reading
+npx -y zion-mcp@2.7.1 tpa import-from-openapi --url "https://api.example.com/openapi.json" --pathsFilter /users /orders   # spec URL (or --specText '<json|yaml>'); pathsFilter values are space-separated substrings
 ```
 
 `import-from-openapi` creates each operation as a full TPA endpoint — parameters, body, response trees, paging — in one call (capped at 25; rolled back on failure) and reports the created `tpaConfigId`s. Scope with `--pathsFilter` FIRST (substring match on the spec's path keys) — importing a whole spec creates every endpoint, and pruning afterwards is a separate DELETE. After importing, cross-check the endpoint's parameters against the human docs (specs often lag; add missing ones with the granular ops). `fetch-doc` has a 15-fetch session budget; when no machine-readable spec exists, author the configs from what you read with the granular ops below: `ADD_TPA_CONFIGS` → `ADD_TPA_CONFIG_PARAMETERS` → `ADD_TPA_RESPONSE_DATA` (+ `*_CHILDREN` for nested fields).
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.1 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.0 login
+npx -y zion-mcp@2.7.1 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.1 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.0 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.0 projects search):
-npx -y zion-mcp@2.7.0 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.0 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.1 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.1 projects search):
+npx -y zion-mcp@2.7.1 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.1 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.1 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -89,7 +89,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 Never write an API key as a parameter `defaultValue` or a literal binding — register it as a project
 secret and bind the auth header to it via the Secret option in the binding selector. See
-`secrets.md` for the ops and for `npx -y zion-mcp@2.7.0 secret save-value`, which collects the plaintext from the
+`secrets.md` for the ops and for `npx -y zion-mcp@2.7.1 secret save-value`, which collects the plaintext from the
 user in the editor so it never enters the schema or this conversation.
 
 A TPA config is an external HTTP/GraphQL integration usable as a project data source. Add the
@@ -163,6 +163,6 @@ Configure (or clear) pagination for a list endpoint.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.0 schema validate && npx -y zion-mcp@2.7.0 project sync-backend
+npx -y zion-mcp@2.7.1 schema validate && npx -y zion-mcp@2.7.1 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

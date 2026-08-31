@@ -44,22 +44,22 @@ A FORMULA or CONDITIONAL value is built in several steps at the value's schema p
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.2 login
+npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.2 projects search):
-npx -y zion-mcp@2.7.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.3 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
+npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -250,7 +250,7 @@ Rename a conditional filter by id (from GET_REQUEST_FILTER_CONTEXT). The Default
 ### `ADD_REQUEST_FILTER_CONDITION`
 
 Add a column where-condition to a conditional filter. Target the filter's whereSchemaPath (or a nested AND/OR within it) from GET_REQUEST_FILTER_CONTEXT, pass the column's pathComponents copied verbatim from selectableColumns, and pick an operator from that column's allowedOperators (defaults to _eq). The comparison value is seeded empty — fill it afterwards with a binding tool at the condition's value path.
-- `columnPathComponents` *(required)*: `array<{componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — The column to filter on, as a `pathComponents` list copied verbatim from a GET_REQUEST_FILTER_CONTEXT `selectableColumns` entry — never hand-built.
+- `columnPathComponents` *(required)*: `array<{arguments?: map<string, object>, componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — The column to filter on, as a `pathComponents` list copied verbatim from a GET_REQUEST_FILTER_CONTEXT `selectableColumns` entry — never hand-built.
 - `operator`: `string` — Comparison operator (e.g. `_eq`, `_neq`, `_gt`, `_lt`, `_gte`, `_lte`, `_is_null`, `_is_not_null`, `_in`, `_nin`, `_like`, `_ilike`). Defaults to `_eq`. Pick one from the column's `allowedOperators` in GET_REQUEST_FILTER_CONTEXT.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the target conditional filter's `where` (the `whereSchemaPath` from GET_REQUEST_FILTER_CONTEXT), or a nested AND/OR sub-expression within it to append into.
 - `value`: `object` — Optional comparison value binding; an empty value of the column's type is seeded when omitted, to be filled afterwards with a CREATE_*_BINDING tool on this condition's `value`.
@@ -264,14 +264,14 @@ Change the comparison operator of an existing column where-condition at the give
 ### `ADD_REQUEST_SORT_CONFIG`
 
 Add a sort rule to a conditional filter. Target the filter's sortConfigsSchemaPath from GET_REQUEST_FILTER_CONTEXT and pass the column pathComponents copied from selectableColumns; direction defaults to ascending.
-- `field` *(required)*: `array<{componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — The column to sort by, as a `pathComponents` list copied from a GET_REQUEST_FILTER_CONTEXT `selectableColumns` entry.
+- `field` *(required)*: `array<{arguments?: map<string, object>, componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — The column to sort by, as a `pathComponents` list copied from a GET_REQUEST_FILTER_CONTEXT `selectableColumns` entry.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the target conditional filter's `filter` (the `sortConfigsSchemaPath` from GET_REQUEST_FILTER_CONTEXT).
 - `sort`: `enum(descending|ascending)` — Sort direction; defaults to ascending.
 
 ### `UPDATE_REQUEST_SORT_CONFIG`
 
 Change a sort rule's column and/or direction by its index within the filter's sortConfigs.
-- `field`: `array<{componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — New sort column path components; unchanged when omitted.
+- `field`: `array<{arguments?: map<string, object>, componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — New sort column path components; unchanged when omitted.
 - `index` *(required)*: `integer` — Index of the sort config to update within the filter's `sortConfigs`.
 - `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
 - `sort`: `enum(descending|ascending)` — New sort direction; unchanged when omitted.
@@ -279,6 +279,6 @@ Change a sort rule's column and/or direction by its index within the filter's so
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema validate && npx -y zion-mcp@2.7.2 project sync-backend
+npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

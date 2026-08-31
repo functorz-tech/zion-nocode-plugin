@@ -87,22 +87,22 @@ The list above is the methods you will reach for, not the whole API. The complet
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.2 login
+npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.2 projects search):
-npx -y zion-mcp@2.7.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.3 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
+npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -193,7 +193,7 @@ narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FI
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.2 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.3 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -253,7 +253,7 @@ Insert a node immediately after an existing node (afterNodeId). Read node ids fr
 - `actionFlowId` *(required)*: `string`
 - `afterNodeId` *(required)*: `string` — Insert the new node immediately after this node (its uniqueId).
 - `displayName`: `string` — Optional display name; defaults to the localized node-type name.
-- `node` *(required)*: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | BRANCH_SEPARATION → {branchNames?: array<string>} | BREAK → {} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | FOR_EACH_START → {} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {tableDisplayName?: string} | QUERY_RECORD → {limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId: string} | THIRD_PARTY_API → {thirdPartyApiId?: string} | UPDATE_GLOBAL_VARIABLES → {} | WHILE_START → {}`
+- `node` *(required)*: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | BRANCH_SEPARATION → {branchNames?: array<string>} | BREAK → {} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | FLOW_END → {} | FOR_EACH_START → {} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {tableDisplayName?: string} | QUERY_RECORD → {limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId: string} | THIRD_PARTY_API → {thirdPartyApiId?: string} | UPDATE_GLOBAL_VARIABLES → {} | WHILE_START → {}`
 
 ### `UPDATE_ACTION_FLOW_NODE`
 
@@ -406,6 +406,6 @@ Remove named output fields from a flow (legacy output model).
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema validate && npx -y zion-mcp@2.7.2 project sync-backend
+npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

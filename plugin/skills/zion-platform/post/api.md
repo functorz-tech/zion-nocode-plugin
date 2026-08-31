@@ -10,26 +10,26 @@ An API integration is a saved external HTTP endpoint the project can use as a da
 ### Workflow
 List with `GET_ALL_API_WORKSPACES` / `GET_ALL_APIS_INFO`, then `GET_API_DETAIL` to read an API's `apiId`, `workspaceId`, and parameter / response `uniqueId`s before editing — never fabricate them. Build top-down: `ADD_API_WORKSPACES` → `ADD_API_WORKSPACE_CONSTANTS` (put API keys / base URLs here, never inline) → `ADD_APIS` (each under a `workspaceId`) → `ADD_API_PARAMETERS`, `ADD_API_RESPONSE_CONFIGS`, `ADD_API_INPUT_VARIABLES`. Editing creates a new version; "Sync Backend" is required for changes to take effect in production.
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates every op below on pre-refactor projects, where the API-integration workspace feature does not exist. On a pre-refactor project integrate external HTTP endpoints as TPA configs (`third-party-api.md`) instead. Check `npx -y zion-mcp@2.7.2 schema load` → `typeSystem` first.
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates every op below on pre-refactor projects, where the API-integration workspace feature does not exist. On a pre-refactor project integrate external HTTP endpoints as TPA configs (`third-party-api.md`) instead. Check `npx -y zion-mcp@2.7.3 schema load` → `typeSystem` first.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.2 login
+npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.2 projects search):
-npx -y zion-mcp@2.7.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.3 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
+npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -89,7 +89,7 @@ Add shared constants (base URLs, API keys, tokens) to a workspace; its APIs refe
 ### `ADD_APIS`
 
 Create one or more API endpoints (name, HTTP method, URL) under a workspaceId. Each is seeded with empty parameters / responses; add those afterwards.
-- `items` *(required)*: `array<{displayName: string, inputVariables?: array<object>, method: enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD), paginationEnabled?: boolean, responseConfigs?: array<object>, url: string, useAsData?: boolean, workspaceId: string}>`
+- `items` *(required)*: `array<{displayName: string, inputVariables?: array<{displayName: string, type: string}>, method: enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD), paginationEnabled?: boolean, responseConfigs?: array<{isCustom?: boolean, name: string, responseType?: string, statusCode: array<string>}>, url: string, useAsData?: boolean, workspaceId: string}>`
 
 ### `UPDATE_API`
 
@@ -122,6 +122,6 @@ Declare input variables on an API — the values a caller supplies, bindable int
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema validate && npx -y zion-mcp@2.7.2 project sync-backend
+npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

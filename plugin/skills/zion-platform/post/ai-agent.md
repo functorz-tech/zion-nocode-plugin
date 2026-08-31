@@ -51,22 +51,22 @@ External-API context here is workspace HTTP APIs: `ADD_ZAI_CONFIG_API_CONTEXTS` 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.2 login
+npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.2 projects search):
-npx -y zion-mcp@2.7.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.3 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
+npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -96,7 +96,7 @@ Run AI node (`actionflow.md`) that references the config by id.
 **Choosing a model (no editor needed):** set it with `UPDATE_ZAI_CONFIG`'s `customModelIdentifier` ({id, namespace}). Discover valid ids + features (vision / file support) from the backend descriptor:
 
 ```bash
-npx -y zion-mcp@2.7.2 platform graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
+npx -y zion-mcp@2.7.3 platform graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
 ```
 Copy an `id` (with its `namespace`) back verbatim — never fabricate one — then verify with `GET_ZAI_CONFIG_DETAIL`.
 
@@ -107,7 +107,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 ### `ADD_ZAI_CONFIGS`
 
 Create one or more AI agents. Each is seeded with default empty system + user prompts, no input args, and plain-text output; edit prompt text afterwards with the bindings plugin at the schema paths from GET_ZAI_CONFIG_DETAIL.
-- `items` *(required)*: `array<{customModelIdentifier: object, name?: string}>` — AI agents to create. Each is seeded with the default system + user prompt components (empty text bindings, edit them via the CREATE_*_BINDING tools at the schema paths from GET_ZAI_CONFIG_DETAIL), an empty input-arg set and a plain-text output config. Adding the first agent also provisions the AI conversation tables/relations/permissions if absent.
+- `items` *(required)*: `array<{customModelIdentifier: {id: string, namespace?: string}, name?: string}>` — AI agents to create. Each is seeded with the default system + user prompt components (empty text bindings, edit them via the CREATE_*_BINDING tools at the schema paths from GET_ZAI_CONFIG_DETAIL), an empty input-arg set and a plain-text output config. Adding the first agent also provisions the AI conversation tables/relations/permissions if absent.
 
 ### `UPDATE_ZAI_CONFIG`
 
@@ -141,6 +141,6 @@ Configure the agent's output: plain streamed text (isStructured=false) or a stru
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema validate && npx -y zion-mcp@2.7.2 project sync-backend
+npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

@@ -62,8 +62,8 @@ out of the upload — it is not a file you can override from here.
 No schema session — this ships files, it does not touch the project schema.
 
 ```bash
-npx -y zion-mcp@2.7.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.2 wechat deploy --dir ./miniprogram   # upload, build, save the trial QR code
+npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.3 wechat deploy --dir ./miniprogram   # upload, build, save the trial QR code
 ```
 
 `wechat deploy` does the whole upload protocol in one call: it scans the directory, declares the

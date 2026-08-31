@@ -8,7 +8,7 @@ You can: create and delete tables, fields, relations, and unique constraints; ch
 Tables and fields are addressed by their displayName in every tool on this plugin.
 (Enums are created and edited via the 'type' plugin.)
 You CANNOT:
-- Rename a table or a field. A systemName is fixed when the entity is created — only its displayName can change afterwards. If a systemName is genuinely wrong, delete and recreate it; recreating a field discards the data already stored in it. Choose systemNames carefully up front.
+- Rename a table or a field. An apiName is fixed when the entity is created — only its displayName can change afterwards. If an apiName is genuinely wrong, delete and recreate it; recreating a field discards the data already stored in it. Choose apiNames carefully up front.
 - Change an existing column's TYPE, or its uniqueness. To change either, delete the column and create a new one; uniqueness cannot be added later because existing rows may already hold duplicates.
 - Update an existing relation or constraint. To change one, delete it and recreate it.
 - Create formula / computed fields. If the user asks for one, explain that formulas must be configured manually in the editor; do not create them.
@@ -17,24 +17,23 @@ You CANNOT:
 Creating or deleting a table, and adding, retyping or deleting a field, rewrites the role permissions keyed to that table. Nobody asks for it, and a new table lands in every role including Anonymous User, so the grants you end up with are not the ones you chose. Each of those results names the roles it changed. Before changing one of them, read that role with GET_ROLE_DETAIL: a permission write is rejected until the role has been read in this session, and the role you would reach for is one your own table edit just moved.
 
 ### Column Types
-A new field's 'basicTypeNameOrTypeId' is a bare primitive type NAME: string, decimal, bigint, boolean, timestamptz, timetz, date, jsonb, image, video, file, geo_point.
-For an enum, pass the bare enum id returned by type.list_enums — or, for an enum you
-created earlier this turn, the id you supplied when creating it.
+A new field's 'typeIdentifier' is copied verbatim from GET_TABLE_FIELD_SELECTABLE_TYPES, which lists every type a field on this project accepts. Its vocabulary is the wrapped identifier: s:p:string, s:p:decimal, s:p:bigint, s:p:boolean, s:p:timestamptz, s:p:timetz, s:p:date, s:p:jsonb, s:p:image, s:p:video, s:p:file, s:p:geo_point for the primitives, and "u:e:<enumId>" for an enum.
 
-Pass the name or id on its own (for example "decimal", or "mja44si4" for an enum). Do NOT
-pass a wrapped type identifier such as "s:p:decimal" or "u:e:<enumId>" — those are the
-stored form, and the tool builds them for you. The separate 'required' field controls
-nullability; never wrap a type in a null union.
+Never assemble one by hand, and never pass a bare name or a bare enum id — "decimal" and
+"mja44si4" are not field types here; "s:p:decimal" and "u:e:mja44si4" are. An enum the
+picker does not list does not exist yet: create it with the 'type' plugin (same turn,
+before the column), then call GET_TABLE_FIELD_SELECTABLE_TYPES again and copy what it returns. The
+separate 'required' field controls nullability; never wrap a type in a null union.
 
 Read results report a field's existing type using legacy uppercase names (TEXT, BIGINT).
-That is the read vocabulary only — when creating a field, still pass the primitive name
-(e.g. a column shown as TEXT is created with "string").
+That is the read vocabulary only — when creating a field, still pass the picker's
+identifier (e.g. a column shown as TEXT is created with "s:p:string").
 
 ### Formula Fields
 Formula (computed) fields — a column whose value is derived from other fields — are a post-refactor concept but are NOT yet authorable through these tools. If the user asks for a derived value, either compute it at write time (an action flow or mutation binding) or tell them to add the formula field in the editor; never fake one with a plain column.
 
 ### Naming
-systemName: English snake_case. Tables are nouns or noun phrases, singular not plural ("order", not "orders"), concise (e.g. "user_profile"); fields are snake_case (e.g. "first_name", "is_active"). No name may contain a space — not tables, fields, relations, or constraints, and not even the displayName. A systemName is permanent once created; only the displayName can be changed later. displayName: user-visible; use the natural Chinese name as the displayName and derive the English snake_case systemName from it (e.g. displayName "用户名" → systemName "user_name").
+apiName — spelled 'tableApiName' on a table, 'apiName' on a field, and reported under those names by every read: English snake_case. Tables are nouns or noun phrases, singular not plural ("order", not "orders"), concise (e.g. "user_profile"); fields are snake_case (e.g. "first_name", "is_active"). No name may contain a space — not tables, fields, relations, or constraints, and not even the displayName. An apiName is permanent once created; only the displayName can be changed later. displayName: user-visible; use the natural Chinese name as the displayName and derive the English snake_case apiName from it (e.g. displayName "用户名" → apiName "user_name").
 
 ### System Built-ins & Product Context
 Every table has non-deletable built-in fields: id (s:p:bigint), created_at (s:p:timestamptz), updated_at (s:p:timestamptz). Do NOT include these when creating a table. Any table, field, or relation where 'editable' is false is system built-in and cannot be modified or deleted. System tables and timezone configurations for Zion:
@@ -74,31 +73,31 @@ To unique-constrain a relation field, use the FK field name ("user_id"), not the
 Enum types are created and edited via the 'type' plugin, not here. To use an enum as a column type, use "u:e:<enumId>" with the actual id from type.list_enums. Create the enum first via the 'type' plugin (same turn, before the column) if it does not yet exist — you supply the id there, so you can reference it immediately.
 
 ### Geographic Location
-Use s:p:geo_point for coordinates. Never split into separate latitude/longitude fields. A s:p:geo_point field auto-generates a companion s:p:decimal hack field named "fz_distance_from_<systemName>", where <systemName> is the geo_point's systemName (may differ from its displayName). At request time it returns the distance from the stored geo_point to the user-supplied location in the request. Treat it as a distance-calculation hack — future migration: this will be replaced by formula fields.
+Use s:p:geo_point for coordinates. Never split into separate latitude/longitude fields. A s:p:geo_point field auto-generates a companion s:p:decimal hack field named "fz_distance_from_<apiName>", where <apiName> is the geo_point's apiName (may differ from its displayName). At request time it returns the distance from the stored geo_point to the user-supplied location in the request. Treat it as a distance-calculation hack — future migration: this will be replaced by formula fields.
 
 ### Constraints
 Only unique constraints supported. Constraint name: lowercase English snake_case, no uppercase. Reference fields by their displayName — for a relation's foreign key use the generated FK field ("user_id"). Uniqueness is fixed when a field is created and cannot be turned on afterwards (existing rows could already hold duplicates), so to make an existing field unique, add a constraint over it. Use a constraint to span multiple fields (composite unique): list the fields' displayNames. Unique constraints are also the only DB-enforced invariant writers can lean on for atomic insert-if-absent / toggle semantics (insert with on_conflict): whenever the design has "at most one row per X" semantics (a join/like/save table, an idempotency key), create the unique constraint up front — read-check-then-insert cannot be made race-safe without it.
 
-A relation's generated FK carries two names, and which one a call wants depends on the call. The schema tools here take displayNames, so a relation named 转译行 gives a FK whose displayName is `转译行_id` — that is what ADD_CONSTRAINTS matches on. The runtime API takes system names, so the same column is `translation_row_id` in a `runtime.query` filter or a `runtime.insert` object. Neither side accepts the other's name, and passing the wrong one reports the field as missing rather than as misnamed. Read both off the field record instead of transliterating one into the other.
+A relation's generated FK carries two names, and which one a call wants depends on the call. The schema tools here take displayNames, so a relation named 转译行 gives a FK whose displayName is `转译行_id` — that is what ADD_CONSTRAINTS matches on. The runtime API takes apiNames, so the same column is `translation_row_id` in a `runtime.query` filter or a `runtime.insert` object. Neither side accepts the other's name, and passing the wrong one reports the field as missing rather than as misnamed. Read both off the field record instead of transliterating one into the other.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.2 login
+npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.2 projects search):
-npx -y zion-mcp@2.7.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.3 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
+npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -131,8 +130,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 Read the field-type picker first, then copy its `typeIdentifier` values verbatim:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
-npx -y zion-mcp@2.7.2 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
+npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
     {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
       {"apiName":"title","displayName":"title","typeIdentifier":"s:p:string","required":true,"defaultValue":""},
@@ -149,7 +148,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 ### `ADD_TABLES`
 
 Create tables, each with a displayName and its initial fields.
-- `items` *(required)*: `array<{fields: array<object>, relations?: array<object>, tableApiName: string, tableDisplayName: string}>`
+- `items` *(required)*: `array<{fields: array<{apiName: string, computed?: boolean, defaultValue?: boolean | string | number | object, displayName: string, required: boolean, typeIdentifier?: string}>, relations?: array<{fieldApiNameInSourceTable: string, fieldApiNameInTargetTable: string, fieldDisplayNameInSourceTable: string, fieldDisplayNameInTargetTable: string, relationType: string, sourceTableDisplayName: string, targetTableDisplayName: string}>, tableApiName: string, tableDisplayName: string}>`
 
 ### `ADD_FIELDS_AND_RELATIONS`
 
@@ -198,7 +197,7 @@ Remove a table's vector-search extension. The generated embedding columns and th
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.2 schema validate && npx -y zion-mcp@2.7.2 project sync-backend
+npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.
 
@@ -208,7 +207,7 @@ npx -y zion-mcp@2.7.2 schema validate && npx -y zion-mcp@2.7.2 project sync-back
 - The picker lists **primitives and enums only**, and returns the *concrete* type: `required` decides nullability, so never pass a `|null` union. A type it did not offer is rejected.
 - **Destructive ops** (`DELETE_TABLES`, `DELETE_FIELDS_AND_RELATIONS`, `DELETE_CONSTRAINTS`) lose data; list what will be deleted and warn the user.
 - **Type changes** aren't editable: delete + recreate the column.
-- If results look stale, run `npx -y zion-mcp@2.7.2 schema reload`.
+- If results look stale, run `npx -y zion-mcp@2.7.3 schema reload`.
 - **Enums / custom types** are out of scope here — see `schema-type.md`.
 
 ## Reading & writing deployed rows (runtime backend)
@@ -216,11 +215,11 @@ npx -y zion-mcp@2.7.2 schema validate && npx -y zion-mcp@2.7.2 project sync-back
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-npx -y zion-mcp@2.7.2 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-npx -y zion-mcp@2.7.2 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-npx -y zion-mcp@2.7.2 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-npx -y zion-mcp@2.7.2 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+npx -y zion-mcp@2.7.3 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.3 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+npx -y zion-mcp@2.7.3 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+npx -y zion-mcp@2.7.3 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
-- `insert` must supply every NOT-NULL column; object keys are the column **systemName**.
+- `insert` must supply every NOT-NULL column; object keys are the column **apiName** (what the schema read tools report).
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.
 - `affected_rows` is authoritative; `returning` can be empty when row-level read permission hides the row.

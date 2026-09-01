@@ -17,6 +17,12 @@ When a run fails, its nodes carry a `traceId`: pass it to `logs.search` as `trac
 ### Two filter grammars — do not mix them
 The operator-first grammar documented above (`{"_eq": {"bigint_operand": {…}}}`) is the RAW shape, for documents you hand-write and send with `runtime.graphql`. The typed tools — `runtime.query`, `runtime.aggregate`, `runtime.update`, `runtime.delete` — take the SIMPLIFIED shape instead: `{"column": {"_op": value}}`, e.g. `{"status": {"_eq": "PAID"}}`. Feeding the raw grammar to a typed tool, or the simplified one to a hand-written document, fails validation at the runtime rather than in the tool.
 
+### Names here are API names, never display names
+The runtime GraphQL schema is generated from **API names** — `tableName`, every column in a field list, every key in a filter or a `set`. Every editor read gives you both: `database.get_tables_info` returns each column's `apiName` AND its `displayName`, and only the `apiName` is valid here. They diverge the moment anyone renames a column in the editor, which is routine and leaves no trace in the runtime, so a name you read in a UI, a page binding or a conversation is the wrong one until you have checked it against `apiName`. A display name sent here comes back as `Field '<name>' in type '<table>' is undefined`.
+
+### An enum column takes the option NAME
+In the schema an enum option has an id and a name, and a binding stores the id. The runtime stores and matches the **name**: filter with `{"status": {"_eq": "PAID"}}`, never the `o1`-style option id you would write into a schema binding. Sending the id is rejected with `Invalid option: <id>, available option: …`, which lists the names — use one of those verbatim.
+
 ### Binary assets are ids, on the way in and on the way out
 Images, videos and files live in object storage; a table column holds only the asset id, never a URL or a path. That changes every side of a runtime call:
 - **Reading**: the column is an object in GraphQL, not a scalar, so selecting `cover_image` bare fails with "Subselection required for type 'FZ_Image'". Ask for `cover_image_id`, or select a subfield — `cover_image { id url }`. The typed tools do this for you when they default a field list; hand-written `runtime.graphql` selections have to get it right. The list-valued media types are deprecated; if a project still has one, it reads as a `[col]_ids` array.
@@ -52,20 +58,20 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-npx -y zion-mcp@2.7.3 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-npx -y zion-mcp@2.7.3 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.4 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+npx -y zion-mcp@2.7.4 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
 `runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 
 ## How to drive it (CLI)
 
 ```bash
-npx -y zion-mcp@2.7.3 runtime query --tableName order --where '{"status":{"_eq":"PAID"}}' --fields '["id","status","total"]'
-npx -y zion-mcp@2.7.3 runtime insert --tableName order --objects '[{"status":"PAID","total":100}]'
-npx -y zion-mcp@2.7.3 runtime update --tableName order --where '{"id":{"_eq":42}}' --set '{"status":"SHIPPED"}'
-npx -y zion-mcp@2.7.3 runtime delete --tableName order --where '{"id":{"_eq":42}}'
-npx -y zion-mcp@2.7.3 runtime graphql --query 'query { order_aggregate { aggregate { count } } }'
-npx -y zion-mcp@2.7.3 runtime run-code --jsCode 'const total = 2 + 2; total;'
+npx -y zion-mcp@2.7.4 runtime query --tableName order --where '{"status":{"_eq":"PAID"}}' --fields '["id","status","total"]'
+npx -y zion-mcp@2.7.4 runtime insert --tableName order --objects '[{"status":"PAID","total":100}]'
+npx -y zion-mcp@2.7.4 runtime update --tableName order --where '{"id":{"_eq":42}}' --set '{"status":"SHIPPED"}'
+npx -y zion-mcp@2.7.4 runtime delete --tableName order --where '{"id":{"_eq":42}}'
+npx -y zion-mcp@2.7.4 runtime graphql --query 'query { order_aggregate { aggregate { count } } }'
+npx -y zion-mcp@2.7.4 runtime run-code --jsCode 'const total = 2 + 2; total;'
 ```
 
 `runtime run-code` executes the snippet in the app's Run Code sandbox and returns its value, with
@@ -77,13 +83,13 @@ These run against the **deployed** app through the admin channel, which bypasses
 permissions — a row you can read here is not necessarily a row your users can read.
 
 ### Yours alone
-Both you and the in-editor agent can deploy the backend — `npx -y zion-mcp@2.7.3 project sync-backend` here,
+Both you and the in-editor agent can deploy the backend — `npx -y zion-mcp@2.7.4 project sync-backend` here,
 `deploy.sync_backend` there — and either way the loop is the same: edit, deploy, then test what
 you deployed, because a runtime call always hits the DEPLOYED app. These two have no in-editor
 counterpart at all:
 
-- `npx -y zion-mcp@2.7.3 schema validate` — type-check the loaded schema before deploying it.
-- `npx -y zion-mcp@2.7.3 site deploy` — ship a built frontend directory, with `site status` / `site abort` for the run; a PROD target needs a human to approve it.
+- `npx -y zion-mcp@2.7.4 schema validate` — type-check the loaded schema before deploying it.
+- `npx -y zion-mcp@2.7.4 site deploy` — ship a built frontend directory, with `site status` / `site abort` for the run; a PROD target needs a human to approve it.
 
 ### Not available from this CLI
 The verification contract above is written for the in-editor agent, which has tools this CLI does

@@ -86,14 +86,14 @@ Slot children are mutated only with the slot tools:
 DATA_SELECTOR, SELECT_VIEW and LIST name one field of their data source: `displayDataField` (the value the user sees) and `cellKeyDataField` (the row identity). Binding the dataSource is not enough — a DATA_SELECTOR or SELECT_VIEW whose data source resolves to a list of objects is invalid until its displayDataField is set. Set it with `UPDATE_COMPONENT_PROPERTIES`, passing the field's plain NAME as a string; the full field reference is resolved for you, so never hand-assemble one. The candidates appear as selectableDataFields in `GET_COMPONENT_INFO` once the dataSource is bound — so the order is always: create → bind dataSource → read the component → name the field.
 
 ### Page Data: Queries, Variables & Inputs
-Pages have NO separate query list — a page query IS a read-only page variable whose dataSource is a database query:
+Pages have NO separate query list — a page query IS a read-only page variable whose dataSource is a database query. It is for data more than one component reads, or a filter the page owns centrally; a single list showing one filtered table binds that table itself (see Data Bindings below) and needs nothing here:
 - `ADD_COMPONENT_QUERY` attaches a table query to a PAGE or MODAL (limit 1 = single row, >1 = list). Components consume it through data bindings (bindings plugin) at the echoed dataSourceSchemaPath; narrow filters and sorting with the request-filter tools at that same path. The result also reports rolesWithoutSelect — grant SELECT with the permission plugin's table-permission tool; never assume it is granted automatically. Tune with `UPDATE_COMPONENT_QUERY`; remove queries and variables alike with `DELETE_COMPONENT_VARIABLES`.
 - Page-local mutable state: `ADD_COMPONENT_VARIABLES`, with each typeIdentifier picked from `GET_COMPONENT_VARIABLE_SELECTABLE_TYPES` — never hand-assembled. A new variable starts with no value, so give it an initial one at the `defaultValueSchemaPath` the result echoes whenever anything reads it: conditional cases, branch conditions and SET_VARIABLE_DATA values all test the variable against specific values, and none of them match an empty variable. The page then loads with every dependent case unmatched — blank labels, the fallback branch showing — and a toggle whose new value is itself conditional on the old one cannot recover, because it has nothing to match either.
 - Page parameters: `ADD_COMPONENT_INPUTS` / `UPDATE_COMPONENT_INPUT` / `DELETE_COMPONENT_INPUTS`. WEB pages take URL query/path params; WECHAT/MOBILE pages and MODALs take general inputs. Navigation and show-modal call sites pass one value per input.
 - `SET_INITIAL_PAGE_ID` sets the app's home page for the current client.
 
 ### Data Bindings on Components
-`GET_COMPONENT_BINDABLE_PROPERTIES` lists every place a component can be bound — always start there and copy the paths verbatim, never hand-assemble a binding path. It returns two sections: `properties`, the component's own slots, each with its ready-to-use schemaPath, expected type, current binding and scope; and `actionSlots`, the parameter slots of the actions already wired to its events, chained success/failure branches included. `ADD_COMPONENT_ACTIONS` echoes an action's slots when it creates it — bind them in the same turn when you can, and use `actionSlots` to find them again in any later turn. Fill the echoed paths with the bindings plugin's tools: `BROWSE_DATA_BINDING_OPTIONS` + `CREATE_OPTION_BINDING` for dataSource slots and other dynamic values, `CREATE_CONST_BINDING` for literals. A LIST or SELECT_VIEW consumes a page query by binding its dataSource slot to the query's page variable this way (`ADD_COMPONENT_QUERY` first). Inside a list cell (scope "list-cell:<listId>") the options tree additionally offers the current list item's fields under 'item-data' — bind cell children to those instead of re-querying the table.
+`GET_COMPONENT_BINDABLE_PROPERTIES` lists every place a component can be bound — always start there and copy the paths verbatim, never hand-assemble a binding path. It returns two sections: `properties`, the component's own slots, each with its ready-to-use schemaPath, expected type, current binding and scope; and `actionSlots`, the parameter slots of the actions already wired to its events, chained success/failure branches included. `ADD_COMPONENT_ACTIONS` echoes an action's slots when it creates it — bind them in the same turn when you can, and use `actionSlots` to find them again in any later turn. Fill the echoed paths with the bindings plugin's tools: `BROWSE_DATA_BINDING_OPTIONS` + `CREATE_OPTION_BINDING` for dataSource slots and other dynamic values, `CREATE_CONST_BINDING` for literals. A LIST, SELECT_VIEW or DATA_SELECTOR can take its dataSource either way, and the options tree offers both in one answer: the tables under 'Table', and any page query under 'Context > Current page > Data source'. **Prefer the table** — a component that owns its data source is filtered, sorted and retyped in one place, and `GET_REQUEST_FILTER_CONTEXT` narrows it at the component's own path. Reach for a page query (`ADD_COMPONENT_QUERY` first) only when the SAME result set is genuinely shared — two components reading one query, or a filter the page tunes centrally. One component, one filtered list is not a sharing case: adding a page variable there buys nothing and leaves a second thing to keep in step. Inside a list cell (scope "list-cell:<listId>") the options tree additionally offers the current list item's fields under 'item-data' — bind cell children to those instead of re-querying the table.
 
 ### Editing Protocol
 - Read-before-edit: editing a component (or inserting into a container) you have not read fails with "has not been read" — read it first; after a conflict, re-read and retry. One read of a container covers both adding children to it and editing its own configuration, so `GET_COMPONENT_INFO` and `GET_CONTAINER_CHILDREN_INFO` on the same component is one call wasted.
@@ -122,22 +122,22 @@ Pages have NO separate query list — a page query IS a read-only page variable 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
+npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.3 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
-npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.4 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
+npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -179,6 +179,6 @@ The preset tab-bar icon library is not reachable from here either. A shown tab n
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
+npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

@@ -21,28 +21,44 @@ binding sources for the flow's input args.
 CREATE_*_BINDING tools at the schemaPaths echoed by GET_CALLBACK_DETAIL (bind them to the
 request-body fields).
 
+### The response
+A webhook answers its caller, and GET_CALLBACK_DETAIL reports that half as `responseBody`.
+SET_CALLBACK_RESPONSE_FORMAT picks the content type and REPLACES the body with an empty one of
+that format, so set the format first:
+- `TEXT_PLAIN` / `TEXT_HTML` answer with a single string — bind it with the bindings plugin's
+CREATE_*_BINDING tools at the schemaPath the result echoes.
+- `APPLICATION_JSON` answers with a structure — SET_CALLBACK_RESPONSE_BODY_FIELDS with a field
+tree, then bind each field's value at the schemaPaths the result echoes.
+   - CLEAR_CALLBACK_RESPONSE_BODY empties the response body again.
+
 ### Editing
 UPDATE_CALLBACK_TRIGGER changes only the display name and/or the enabled flag. DELETE_CALLBACK_TRIGGERS
 removes custom webhooks by uniqueId. Both fail on managed payment-provider callbacks.
 
+SET_CALLBACK_TYPE is a different thing entirely: it switches the endpoint from a
+custom webhook (`DEFAULT`) to a payment provider's notification receiver, which RESETS both
+bodies to that provider's fixed shape and loses whatever was configured. Only reach for it
+when the user wants this endpoint to receive a provider's callbacks; the provider has to be
+activated for the project first.
+
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
+npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.3 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
-npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.4 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
+npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -69,12 +85,12 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 ## Worked example: an incoming order webhook
 
 ```bash
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[
   {"name":"ADD_CALLBACK_TRIGGERS","args":{"items":[
     {"actionFlowId":"<id from GET_ALL_ACTION_FLOWS_INFO>","name":"Order paid"}
   ]}}
 ]'
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"GET_CALLBACK_DETAIL","args":{"callbackId":"<echoed id>"}}]'
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"GET_CALLBACK_DETAIL","args":{"callbackId":"<echoed id>"}}]'
 ```
 Read the bound flow, the request-body shape and each input arg's binding `schemaPath` back from
 `GET_CALLBACK_DETAIL` — the args start as empty bindings, and you fill them from the request-body
@@ -100,7 +116,7 @@ Update a custom webhook's display name and/or enabled flag (omitted fields uncha
 
 ### `GET_CALLBACK_DETAIL`
 
-Inspect one webhook by uniqueId: its bound action flow, request body shape, and the flow input args plus their binding schemaPaths (fill these with the bindings tools).
+Inspect one webhook by uniqueId: its bound action flow, request and response body shapes, and the flow input args plus their binding schemaPaths (fill these with the bindings tools).
 - `callbackId` *(required)*: `string` — The uniqueId of the webhook to inspect (from GET_ALL_CALLBACKS_INFO).
 
 ### `SET_CALLBACK_REQUEST_PARAMETERS`
@@ -112,6 +128,6 @@ Set a webhook's request body from a field tree describing the incoming payload. 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
+npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

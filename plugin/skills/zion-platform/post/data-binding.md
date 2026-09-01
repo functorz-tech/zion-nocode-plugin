@@ -4,7 +4,7 @@
 Data binding connects data sources to UI components for display or interaction.
 
 ### Concepts
-Schema path: array of keys/indices locating a bindable node in the project JSON schema. Data binding options tree: hierarchical tree of all available data for a given schema path. Never hand-build a schema path for an action-flow node: copy it from the actionflow plugin's add_node result or get_flow_detail's nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments for the binding site inside the node. The binding-site key names VARY BY NODE TYPE (an AI node's input arg lives under inputArgs/<argKey>, a code node's under inputArgsDataBinding/<argName>, a mutation column under mutation/object/<columnName>) — copy the exact keys from the currentNode structure returned by get_context_info; never guess them.
+Schema path: array of keys/indices locating a bindable node in the project JSON schema. Data binding options tree: hierarchical tree of all available data for a given schema path. Never hand-build a schema path for an action-flow node: copy it from the actionflow plugin's add_node result or get_flow_detail's nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments for the binding site inside the node. The binding-site key names VARY BY NODE TYPE (an AI node's input arg lives under inputArgs/<argKey>, a code node's under inputs/<index>/value, a mutation column under mutation/object/<columnName>) — copy the exact keys from the currentNode structure returned by get_context_info; never guess them.
 Type metadata in read results uses exact typeIdentifier values such as `s:p:string` and `u:e:<enumId>`; copy those values verbatim.
 
 ### Binding Kinds
@@ -14,7 +14,7 @@ OPTION: bind to an existing path in the data binding options tree. pathInHierarc
 1. Prefer OPTION (live data) over CONST_VALUE.
 2. No suitable option? Use CONST_VALUE with a reasonable inferred constant.
 3. Component purpose unclear? Skip binding.
-4. List component with an ancestor list: prefer binding from the ancestor list's item data to preserve relational linkage — not directly from a table.
+4. A list NESTED INSIDE another list binds from the ancestor's item data, not from a table, so the relational linkage survives. This is about nesting only — a top-level list binds straight to the table it shows, and prefers that over consuming someone else's page query unless the result set is genuinely shared.
 5. Bind ONLY what the task requires: in an update/insert node's object leave every other column untouched — never fill it with a Null option or a placeholder constant (Null on a required column breaks the flow at runtime).
 6. Never seed a typed site with a throwaway constant "for now" and upgrade later — bind the real value directly; a constant re-types nothing but still wastes a round.
 
@@ -44,22 +44,22 @@ A FORMULA or CONDITIONAL value is built in several steps at the value's schema p
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
+npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.3 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
-npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.4 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
+npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -279,6 +279,6 @@ Change a sort rule's column and/or direction by its index within the filter's so
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
+npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

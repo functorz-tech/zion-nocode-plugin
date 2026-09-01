@@ -22,7 +22,7 @@ Syncing is not publishing. The user's live web or mini-program app is released s
 ## How to drive it (CLI only)
 
 ```bash
-npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
+npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
 ```
 
 Every schema edit lands in the CRDT session immediately, but the running backend keeps serving the previously synced schema until `project sync-backend`. So a data model, action flow, API, permission, secret, or AI agent change is invisible to anything that talks to the live app — including `runtime query`, `runtime graphql`, and a published site — until you sync.

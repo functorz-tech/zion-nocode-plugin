@@ -1,12 +1,12 @@
 # Payments (WeChat Pay / Alipay)
 
 ## Payment System Domain Knowledge
-Zion's payment system is built around a developer-owned **order table** plus a set of platform-managed payment records and **auto-generated Actionflows** that react to gateway callbacks. On Zion the gateways are WeChat Pay (mini-program and H5/JSAPI) and Alipay (PC web; one-time plus recurring "agreement" subscriptions). Enabling and configuring payments is done in the editor (Settings → Payment), not via agent tools — the agent designs the order table and guides the user through editing the auto-created flows.
+Zion's payment system is built around a developer-owned **order table** plus a set of platform-managed payment records and **auto-generated Actionflows** that react to gateway callbacks. On Zion the gateways are WeChat Pay (mini-program and H5/JSAPI) and Alipay (PC web; one-time plus recurring "agreement" subscriptions). Enabling and configuring payments splits in two: you activate the module with ACTIVATE_PAYMENT; the gateway credentials, the brand assets and the Pro-plan upgrade are the user's own, in the editor (Settings → Payment).
 
-### Prerequisites (done in the editor, in order)
-1. Upgrade the project to the Pro plan or higher (payments are gated by plan; an expired plan breaks live payments and blocks publishing).
+### Prerequisites (in order)
+1. The user upgrades the project to the Pro plan or higher (payments are gated by plan; an expired plan breaks live payments and blocks publishing).
 2. Create the **order table** (see below) with its required fields.
-3. Enable the payment module in Settings → Payment and bind it to the order table.
+3. Call ACTIVATE_PAYMENT with the order table's display name. Read `overview.project` first — it reports whether payments are already enabled and which types are active, and the order table is fixed by the first activation and ignored afterwards. The call appends the type's generated flows/callbacks/jobs and grants the logged-in user role permission to pay with it; a first activation also inserts the payment tables, which every role then carries in its table permissions though only the logged-in user role can read them. It names what it created; say so in your answer, since in AUTO_ACCEPT the user was not asked.
 4. Configure the gateway credentials — WeChat Pay (merchant ID, APIv2 key, the linked Mini Program AppID, plus the apiclient_cert.p12 for refunds) and/or Alipay (app ID and an RSA2 key pair) — plus brand name, logo, slogan.
 5. Confirm the auto-generated payment/refund callback flows are wired.
 
@@ -52,26 +52,26 @@ The WeChat Pay and Alipay payment actions take the amount in **yuan (元) as a `
 Alipay supports subscriptions via a signed agreement. The start action takes `orderId`, a price (Alipay caps recurring amounts at ¥100), a product name, a deduction interval (≥ 7 days), and an Alipay scene code (a user can subscribe to the same scene only once); the cancel action takes the recurring-payment row id. Deductions run in the auto-generated daily loop flow: for each due agreement you must create a NEW order inside the loop and bind its id to the deduction node's `orderId` input. Note: a full Alipay refund does not re-trigger the payment flow.
 
 ### Scope Note
-The agent cannot enable the payment module, set gateway credentials, or edit Actionflow bodies via tools — those are editor actions. The agent CAN design the order table (via the database plugin), and should walk the user step by step through enabling payments, wiring the secure order-creation flow, and adding the `alreadyProcessed` idempotency guard in the payment flow.
+ACTIVATE_PAYMENT turns the module on one type at a time, and the actionflow plugin edits the generated flows' bodies. What you cannot do is the user's own editor work (Settings → Payment): the gateway credentials, the brand assets and the plan upgrade. Design the order table first (via the database plugin), then activate, then wire the secure order-creation flow and add the `alreadyProcessed` idempotency guard in the payment flow.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
+npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.3 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
-npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.4 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
+npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -91,12 +91,14 @@ Enforce the secure transaction pattern — never compute price on the client; fu
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
 
 ### `ACTIVATE_PAYMENT`
+
+Activate one payment type on this project. Read overview.project first: it reports whether payments are enabled, which types are already active, and the order table the first activation fixed — `orderTableDisplayName` is required on the first activation and ignored afterwards. This appends the type's generated action flows, callbacks and scheduled jobs and grants the logged-in user role permission to pay with it; a first activation also inserts the payment tables and relations, which land in every role's table permissions but stay readable by the logged-in user role alone. The result names what it created. In AUTO_ACCEPT nobody is asked first, so tell the user what appeared in their project. Provider credentials, brand assets and the plan upgrade are the user's own, in the editor's payment settings.
 - `orderTableDisplayName`: `string` — Display name of the existing table to use as the order table. Required on first activation (when no payment tables exist yet); ignored afterwards — the order table is then resolved from the existing order→payment relation.
 - `paymentType` *(required)*: `enum(STRIPE|AIRWALLEX|ALIPAY|WECHAT)` — Payment type to activate. Which types are selectable depends on the product/client (ZION mini-program: WECHAT only; ZION otherwise: WECHAT/ALIPAY/AIRWALLEX; MOMEN: STRIPE/AIRWALLEX).
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
+npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

@@ -52,7 +52,7 @@ A flow returns a **single typed output value**: set its type with `SET_ACTION_FL
 `CLEAR_ACTION_FLOW_OUTPUT`; bind the value afterwards at the output's schema path.
 
 ### Building & Editing a Flow
-Create flows with `ADD_ACTION_FLOWS` (each seeds an empty FLOW_START → FLOW_END), then read node and structure ids from `GET_ACTION_FLOW_DETAIL` before editing. Add a node after another with `ADD_ACTION_FLOW_NODE`, reorder with `MOVE_ACTION_FLOW_NODES`, remove with `DELETE_ACTION_FLOW_NODES`, and branch a Condition node with `ADD_ACTION_FLOW_BRANCH_ITEM`. Every node's displayName must state its business intent ('Insert generation request', 'Decrement like count') — `ADD_ACTION_FLOW_NODE` rejects a blank name; never leave the node-type default. Edit a node's name or type-scalar config with `UPDATE_ACTION_FLOW_NODE`, but set its data bindings (values, conditions, data sources, mutation fields) with the bindings plugin at the node's schema path — never inline. A node's schema path is NEVER hand-built: copy it from `ADD_ACTION_FLOW_NODE`'s result or `GET_ACTION_FLOW_DETAIL`'s nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments to reach a binding site inside the node. The key names vary by node type — an AI node's input arg is `.../allNodes/{j}/inputArgs/<argKey>`, a code node's is `.../allNodes/{j}/inputArgsDataBinding/<argName>`, a mutation column is `.../allNodes/{j}/mutation/object/<columnName>` — copy the exact keys from `GET_ACTION_FLOW_CONTEXT_INFO`'s currentNode structure, never guess them. Declare flow variables with `ADD_ACTION_FLOW_GLOBAL_VARIABLES` and assign them in a Set Variable node with `ADD_GLOBAL_VARIABLES_NODE_TARGETS`. A Run Code node's `args.<name>` input slots are managed with `ADD_CUSTOM_CODE_NODE_INPUT` (rename/delete variants); its result type is declared with `SET_CUSTOM_CODE_NODE_OUTPUT_TYPE` so downstream nodes can bind to it; fill the code body with `CREATE_CONST_BINDING`. An update or delete Database node is seeded with an always-true filter that matches **every** row — narrow it with the bindings plugin's request filters before syncing, or the write hits the whole table. A workspace API node's request parameters are pre-seeded on the node when the API is selected — read the node back and bind ONLY the parameter slots it shows under `event/inputs/<param>`. NEVER invent input keys the read-back does not show: the runtime and editor ignore them.
+Create flows with `ADD_ACTION_FLOWS` (each seeds an empty FLOW_START → FLOW_END), then read node and structure ids from `GET_ACTION_FLOW_DETAIL` before editing. Add a node after another with `ADD_ACTION_FLOW_NODE`, reorder with `MOVE_ACTION_FLOW_NODES`, remove with `DELETE_ACTION_FLOW_NODES`, and branch a Condition node with `ADD_ACTION_FLOW_BRANCH_ITEM`. Every node's displayName must state its business intent ('Insert generation request', 'Decrement like count') — `ADD_ACTION_FLOW_NODE` rejects a blank name; never leave the node-type default. Edit a node's name or type-scalar config with `UPDATE_ACTION_FLOW_NODE`, but set its data bindings (values, conditions, data sources, mutation fields) with the bindings plugin at the node's schema path — never inline. A node's schema path is NEVER hand-built: copy it from `ADD_ACTION_FLOW_NODE`'s result or `GET_ACTION_FLOW_DETAIL`'s nodeSchemaPaths (form: server/actionFlows/{i}/allNodes/{j}), then append key segments to reach a binding site inside the node. The key names vary by node type — an AI node's input arg is `.../allNodes/{j}/inputArgs/<argKey>`, a code node's is `.../allNodes/{j}/inputs/{index}/value`, a mutation column is `.../allNodes/{j}/mutation/object/<columnName>` — copy the exact keys from `GET_ACTION_FLOW_CONTEXT_INFO`'s currentNode structure, never guess them. Declare flow variables with `ADD_ACTION_FLOW_GLOBAL_VARIABLES` and assign them in a Set Variable node with `ADD_GLOBAL_VARIABLES_NODE_TARGETS`. A Run Code node's `args.<name>` input slots are managed with `ADD_CUSTOM_CODE_NODE_INPUT` (rename/delete variants); its result type is declared with `SET_CUSTOM_CODE_NODE_OUTPUT_TYPE` so downstream nodes can bind to it; fill the code body with `CREATE_CONST_BINDING`. An update or delete Database node is seeded with an always-true filter that matches **every** row — narrow it with the bindings plugin's request filters before syncing, or the write hits the whole table. A workspace API node's request parameters are pre-seeded on the node when the API is selected — read the node back and bind ONLY the parameter slots it shows under `event/inputs/<param>`. NEVER invent input keys the read-back does not show: the runtime and editor ignore them.
 
 ### Condition Branches
 Condition branches use their left-to-right editor order. At runtime, only the first branch whose condition is true has its branch body executed; branches to its right are not entered. Put an `Always` branch last when fallback behavior is required—an earlier `Always` branch shadows every branch to its right. Do not rely on the no-match behavior; provide an explicit fallback whenever the flow must choose a branch. Only `MUTUAL_EXCLUSION` is supported. `MUTUAL_TOLERANCE` may still appear in generated argument schemas, but tolerance branches are not implemented and fail at runtime. Always set a Condition node's `conditionType` to `MUTUAL_EXCLUSION`.
@@ -74,7 +74,7 @@ Synchronous: all DB changes roll back on error. Asynchronous: only the failing n
 Each save creates a new version. "Sync Backend" required after editing for changes to take effect in production.
 
 ### JavaScript Sandbox (Run Code node)
-Custom Code Blocks run in a synchronous GraalJS server sandbox. No async/await, no require(), no browser APIs. All platform interactions go through the global `context` object: context.getArg(key)                              — retrieve flow input context.setResult(val)                           — pass this node's single result downstream context.runGql(opName, gql, vars, permission)    — execute DB operations context.callThirdPartyApi(apiId, params)         — invoke a configured REST API context.callActionFlow(flowId, ver, args)        — run a sub-flow synchronously context.createActionFlowTask(flowId, ver, args)  — trigger a sub-flow async context.getSsoUserInfo()                         — get authenticated user profile context.uploadMedia(url, headers)                — stream remote image to asset server context.log(message)                             — emit to Log Service
+Custom Code Blocks run in a synchronous GraalJS server sandbox. No async/await, no require(), no browser APIs. All platform interactions go through the global `context` object: context.getArg(key)                              — retrieve flow input context.setResult(val)                           — pass this node's single result downstream context.runGql(opName, gql, vars, permission)    — execute DB operations context.callThirdPartyApi(apiId, params)         — invoke a workspace API by its apiId (the method name is historical; this project has no third-party API configs) context.callActionFlow(flowId, ver, args)        — run a sub-flow synchronously context.createActionFlowTask(flowId, ver, args)  — trigger a sub-flow async context.getSsoUserInfo()                         — get authenticated user profile context.uploadMedia(url, headers)                — stream remote image to asset server context.log(message)                             — emit to Log Service
 
 `runGql` takes FOUR arguments and the first one is the operation NAME, not the document: `runGql("GetWords", "query GetWords { theme_word(where: {...}) { word } }", {}, {role: "admin"})`. The name must match the one declared in the document. `vars` is a JS object (not a JSON string) and `permission` is `{role: "<role name>"}` with an optional `sessionVariable` map. Passing the document first is the mistake that costs an afternoon: the arity error, then a String-coercion error naming a type you did not pass, then "permission should have field role" are all the same misalignment reported one argument at a time.
 
@@ -84,22 +84,22 @@ The list above is the methods you will reach for, not the whole API. The complet
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
+npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.3 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
-npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.4 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
+npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -191,7 +191,7 @@ narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FI
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.3 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.4 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -210,7 +210,7 @@ Return the data and variables in scope at a node's schema path — what a bindin
 
 ### `ADD_ACTION_FLOWS`
 
-Create one or more action flows. Each is seeded empty (FLOW_START connected straight to FLOW_END); add nodes afterwards with ADD_ACTION_FLOW_NODE.
+Create one or more action flows. Each is seeded empty (FLOW_START connected straight to FLOW_END); add nodes afterwards with ADD_ACTION_FLOW_NODE. Leave `groupId` unset unless the flow belongs in a specific group — naming one also edits the group configuration, so GET_ACTION_FLOW_GROUPS has to be read first.
 - `items` *(required)*: `array<{displayName: string, groupId?: string, isAsync?: boolean, timeout?: integer}>` — Action flows to create. Each is seeded with an empty body (a FLOW_START connected directly to a FLOW_END); add nodes afterwards with ADD_ACTION_FLOW_NODE.
 
 ### `UPDATE_ACTION_FLOW`
@@ -394,6 +394,6 @@ Clear the flow's single typed output value.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
+npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

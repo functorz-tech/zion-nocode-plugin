@@ -4,14 +4,13 @@
 Zion uses PostgreSQL. Data model changes require "Sync Backend" to take effect online.
 
 ### Capabilities & Limitations
-You can: create and delete tables, fields, relations, and unique constraints; change a table's displayName / description; change a field's displayName / required / default value.
+You can: create and delete tables, fields, relations, and unique constraints; change a table's displayName / description; change a field's displayName / required / default value; create formula (computed) fields.
 Tables and fields are addressed by their displayName in every tool on this plugin.
 (Enums are created and edited via the 'type' plugin.)
 You CANNOT:
 - Rename a table or a field. An apiName is fixed when the entity is created — only its displayName can change afterwards. If an apiName is genuinely wrong, delete and recreate it; recreating a field discards the data already stored in it. Choose apiNames carefully up front.
 - Change an existing column's TYPE, or its uniqueness. To change either, delete the column and create a new one; uniqueness cannot be added later because existing rows may already hold duplicates.
 - Update an existing relation or constraint. To change one, delete it and recreate it.
-- Create formula / computed fields. If the user asks for one, explain that formulas must be configured manually in the editor; do not create them.
 
 ### Every table edit rewrites role permissions
 Creating or deleting a table, and adding, retyping or deleting a field, rewrites the role permissions keyed to that table. Nobody asks for it, and a new table lands in every role including Anonymous User, so the grants you end up with are not the ones you chose. Each of those results names the roles it changed. Before changing one of them, read that role with GET_ROLE_DETAIL: a permission write is rejected until the role has been read in this session, and the role you would reach for is one your own table edit just moved.
@@ -29,8 +28,12 @@ Read results report a field's existing type using legacy uppercase names (TEXT, 
 That is the read vocabulary only — when creating a field, still pass the picker's
 identifier (e.g. a column shown as TEXT is created with "s:p:string").
 
-### Formula Fields
-Formula (computed) fields — a column whose value is derived from other fields — are a post-refactor concept but are NOT yet authorable through these tools. If the user asks for a derived value, either compute it at write time (an action flow or mutation binding) or tell them to add the formula field in the editor; never fake one with a plain column.
+### Formula (Computed) Fields
+A computed field's value is derived from the row's other fields every time it is read, so it never goes stale. Create one by passing `computed: true` on the field — it takes no default, cannot be required, and cannot be an image / video / file / JSON type. The field is created with an EMPTY formula, which is a project error until you fill it, so finish it in the same turn:
+1. Take the field's `formulaSchemaPath` from the create result (GET_TABLES_INFO reports it for fields created earlier, under `formulaFields`).
+2. Load the 'bindings' plugin and build the formula at that path — `bindings.get_formula_operators` then `bindings.create_formula_binding`, filling each operand at the paths that result echoes.
+
+Never fake a computed field with a plain column written at insert time: it goes stale the moment any input changes. Reach for a write-time value only when the user wants the number frozen as of the write.
 
 ### Naming
 apiName — spelled 'tableApiName' on a table, 'apiName' on a field, and reported under those names by every read: English snake_case. Tables are nouns or noun phrases, singular not plural ("order", not "orders"), concise (e.g. "user_profile"); fields are snake_case (e.g. "first_name", "is_active"). No name may contain a space — not tables, fields, relations, or constraints, and not even the displayName. An apiName is permanent once created; only the displayName can be changed later. displayName: user-visible; use the natural Chinese name as the displayName and derive the English snake_case apiName from it (e.g. displayName "用户名" → apiName "user_name").
@@ -82,22 +85,22 @@ A relation's generated FK carries two names, and which one a call wants depends 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
+npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.3 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
-npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.4 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
+npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -130,8 +133,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 Read the field-type picker first, then copy its `typeIdentifier` values verbatim:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
     {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
       {"apiName":"title","displayName":"title","typeIdentifier":"s:p:string","required":true,"defaultValue":""},
@@ -197,7 +200,7 @@ Remove a table's vector-search extension. The generated embedding columns and th
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
+npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.
 
@@ -207,7 +210,7 @@ npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-back
 - The picker lists **primitives and enums only**, and returns the *concrete* type: `required` decides nullability, so never pass a `|null` union. A type it did not offer is rejected.
 - **Destructive ops** (`DELETE_TABLES`, `DELETE_FIELDS_AND_RELATIONS`, `DELETE_CONSTRAINTS`) lose data; list what will be deleted and warn the user.
 - **Type changes** aren't editable: delete + recreate the column.
-- If results look stale, run `npx -y zion-mcp@2.7.3 schema reload`.
+- If results look stale, run `npx -y zion-mcp@2.7.4 schema reload`.
 - **Enums / custom types** are out of scope here — see `schema-type.md`.
 
 ## Reading & writing deployed rows (runtime backend)
@@ -215,10 +218,10 @@ npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-back
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-npx -y zion-mcp@2.7.3 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-npx -y zion-mcp@2.7.3 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-npx -y zion-mcp@2.7.3 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-npx -y zion-mcp@2.7.3 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+npx -y zion-mcp@2.7.4 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.4 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+npx -y zion-mcp@2.7.4 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+npx -y zion-mcp@2.7.4 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
 - `insert` must supply every NOT-NULL column; object keys are the column **apiName** (what the schema read tools report).
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.

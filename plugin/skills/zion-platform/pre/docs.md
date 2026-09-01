@@ -161,8 +161,8 @@ Format: - {relative_path}: {page_title}
 Read-only — no schema session needed.
 
 ```bash
-npx -y zion-mcp@2.7.3 docs search --query "how to configure wechat pay / alipay payments"
-npx -y zion-mcp@2.7.3 docs get-page --path "/03_data/01_database_basics"
+npx -y zion-mcp@2.7.4 docs search --query "how to configure wechat pay / alipay payments"
+npx -y zion-mcp@2.7.4 docs get-page --path "/03_data/01_database_basics"
 ```
 
 `docs search` returns `{ path, title, url }` ranked by relevance; `url` is a public HTTPS link you can cite. Pass a returned `path` to `docs get-page` to read the full markdown. Search before answering how-to questions, and ground every claim in the retrieved page.

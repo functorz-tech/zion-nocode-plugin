@@ -14,22 +14,22 @@ Both are read-only; neither mutates the schema.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
+npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.3 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
-npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.4 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
+npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -60,7 +60,7 @@ a subset of what you already hold, and re-listing cannot refresh it — this inv
 is rebuilt from live schema on every call. Call it again only after you have created
 or deleted an entity. Narrow it with `entityTypes` when you already know which
 domain you need.
-- `entityTypes`: `array<enum(PAGE|TABLE|ACTION_FLOW|API|ZAI|TRIGGER|ROLE|TYPE|GLOBAL_VARIABLE|COLOR_THEME|… 13 total)>` — Optional entity-type filter. When set, only the matching inventory sections are returned: API — apiWorkspaces or thirdPartyApis; TRIGGER — dbTriggers + scheduledTriggers; TYPE — enums + objectTypes; other values map to their single section. Omit (or pass an empty list) to include every section.
+- `entityTypes`: `array<enum(PAGE|TABLE|ACTION_FLOW|API|ZAI|TRIGGER|ROLE|TYPE|GLOBAL_VARIABLE|COLOR_THEME|… 14 total)>` — Optional entity-type filter. When set, only the matching inventory sections are returned: API — apiWorkspaces (workspace APIs) or thirdPartyApis (legacy third-party API configs), whichever this project uses; TRIGGER — dbTriggers + scheduledTriggers; TYPE — enums + objectTypes; other values map to their single section. Omit (or pass an empty list) to include every section.
 
 ### `GET_ENTITY_RELATION_GRAPH`
 

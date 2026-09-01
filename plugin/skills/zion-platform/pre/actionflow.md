@@ -77,7 +77,7 @@ Synchronous: all DB changes roll back on error. Asynchronous: only the failing n
 Each save creates a new version. "Sync Backend" required after editing for changes to take effect in production.
 
 ### JavaScript Sandbox (Run Code node)
-Custom Code Blocks run in a synchronous GraalJS server sandbox. No async/await, no require(), no browser APIs. All platform interactions go through the global `context` object: context.getArg(key)                              — retrieve flow input context.setReturn(key, val)                      — pass output to downstream nodes context.runGql(opName, gql, vars, permission)    — execute DB operations context.callThirdPartyApi(apiId, params)         — invoke a configured REST API context.callActionFlow(flowId, ver, args)        — run a sub-flow synchronously context.createActionFlowTask(flowId, ver, args)  — trigger a sub-flow async context.getSsoUserInfo()                         — get authenticated user profile context.uploadMedia(url, headers)                — stream remote image to asset server context.log(message)                             — emit to Log Service
+Custom Code Blocks run in a synchronous GraalJS server sandbox. No async/await, no require(), no browser APIs. All platform interactions go through the global `context` object: context.getArg(key)                              — retrieve flow input context.setReturn(key, val)                      — pass output to downstream nodes context.runGql(opName, gql, vars, permission)    — execute DB operations context.callThirdPartyApi(apiId, params)         — invoke a configured Third-Party API context.callActionFlow(flowId, ver, args)        — run a sub-flow synchronously context.createActionFlowTask(flowId, ver, args)  — trigger a sub-flow async context.getSsoUserInfo()                         — get authenticated user profile context.uploadMedia(url, headers)                — stream remote image to asset server context.log(message)                             — emit to Log Service
 
 `runGql` takes FOUR arguments and the first one is the operation NAME, not the document: `runGql("GetWords", "query GetWords { theme_word(where: {...}) { word } }", {}, {role: "admin"})`. The name must match the one declared in the document. `vars` is a JS object (not a JSON string) and `permission` is `{role: "<role name>"}` with an optional `sessionVariable` map. Passing the document first is the mistake that costs an afternoon: the arity error, then a String-coercion error naming a type you did not pass, then "permission should have field role" are all the same misalignment reported one argument at a time.
 
@@ -87,22 +87,22 @@ The list above is the methods you will reach for, not the whole API. The complet
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.3 login
+npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.3 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.3 projects search):
-npx -y zion-mcp@2.7.3 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.3 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.4 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
+npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -193,7 +193,7 @@ narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FI
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.3 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.4 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -406,6 +406,6 @@ Remove named output fields from a flow (legacy output model).
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.3 schema validate && npx -y zion-mcp@2.7.3 project sync-backend
+npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

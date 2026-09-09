@@ -24,13 +24,14 @@ Custom object types are named, reusable structured types (a set of typed fields)
 
 Operations:
 - `GET_ALL_OBJECT_DEFINITIONS`: list object types with their fields. Always call it before editing — edits are rejected until the target type has been read.
+- `GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES`: the types a field of an object type accepts, with the exact `typeIdentifier` to write.
 - `ADD_OBJECT_TYPE_DEFINITIONS`: create object types, each with a displayName and its initial fields. Ids are assigned by the platform and returned in the result — do not send one.
 - `UPDATE_OBJECT_TYPE_DEFINITIONS`: update a type's own displayName / description / private flag only (omitted fields are unchanged).
 - `ADD_TYPE_DEFINITION_FIELDS` / `UPDATE_TYPE_DEFINITION_FIELDS` / `DELETE_TYPE_DEFINITION_FIELDS`: add fields, rename or retype existing ones, or remove them.
 - `REORDER_TYPE_DEFINITION_FIELDS`: set the order the type's fields are rendered and emitted in — pass every field name, in the order wanted.
 - `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` / `COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE`: copy a type between the shared list and a single feature (see below).
 
-Field types are TypeIdentifier strings: `s:p:<primitive>` (string, bigint, decimal, boolean, timestamptz, timetz, date, jsonb, image, video, file, geo_point), or `u:o:<typeId>` / `u:e:<enumId>` to nest an object or enum type; a field's arrayLevel makes it a list (1) or list of lists (2).
+A field's type is a `typeIdentifier`: `s:p:<primitive>` (string, bigint, decimal, boolean, timestamptz, timetz, date, jsonb, image, video, file, geo_point), or `u:o:<typeId>` / `u:e:<enumId>` for a nested object or enum type. Read that shape to recognise what comes back, but never assemble one — pick the identifier out of `GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES` and copy it verbatim, since one that names nothing, or a type this slot does not take, is rejected. Arrays are not listed — the nesting has no end — so a list field is that same identifier with the field's `arrayLevel` set (1 = list, 2 = list of lists), never brackets written into the identifier.
 
 Rename and retype through `UPDATE_TYPE_DEFINITION_FIELDS` rather than delete + re-add: a rename carries the field's references along with it, where a re-add breaks every one of them. Retyping away from an image / video / file or JSON type still drops the references, because nothing that pointed at the old shape can read the new one — check usages and warn the user first. Deleting a field, or a type that is still referenced, breaks those references the same way.
 
@@ -41,26 +42,26 @@ A public type is an entry in the project's shared object type list. A private on
 
 Either way the copy is a NEW type with a new id, and nothing points at it yet: the feature keeps using the old type until you set that slot's type to the `typeIdentifier` the result echoes.
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.7.4 schema status` → `typeSystem`.
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.7.5 schema status` → `typeSystem`.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
+npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.4 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
-npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.5 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
+npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -79,6 +80,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Delete enum groups | `DELETE_ENUM_DEFINITION_GROUPS` | `groupIds` |
 | File enums into a group | `MOVE_ENUM_DEFINITIONS_TO_GROUP` | `items` |
 | List object types | `GET_ALL_OBJECT_DEFINITIONS` | — |
+| Types an object type's field accepts | `GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES` | — |
 | Rename or retype an object type's fields | `UPDATE_TYPE_DEFINITION_FIELDS` | `fields`, `typeId` |
 | Reorder an object type's fields | `REORDER_TYPE_DEFINITION_FIELDS` | `orderedFieldNames`, `typeId` |
 | Publish a private object type as reusable | `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` | `displayName`, `typeId` |
@@ -101,7 +103,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 ## Worked example: an OrderStatus enum
 
 ```bash
-npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[
   {"name":"ADD_ENUM_DEFINITIONS","args":{"enums":[
     {"name":"OrderStatus","displayName":"OrderStatus","options":[
       {"value":"PENDING","displayName":"PENDING"},
@@ -120,16 +122,31 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 Create enum types, each with a displayName and its initial options. Ids are assigned by the platform and returned in the result — do not send one. Read list_enum_groups first — creating an enum also writes the enum group configuration.
 - `enums` *(required)*: `array<{description?: string, displayName: string, groupId?: string, options: array<{name: string}>}>`
+  - `enums[].groupId` — Target enum group id; omit to add the enum to the default ungrouped section
 
 ### `UPDATE_ENUM_DEFINITIONS`
 
 Update enums' own displayName / description; omitted fields are unchanged. The `options` argument replaces the entire option list — prefer ADD_ENUM_OPTIONS / UPDATE_ENUM_OPTIONS / DELETE_ENUM_OPTIONS for single-option edits.
 - `enums` *(required)*: `map<string, {description?: string, displayName?: string, options?: array<{id: string, name: string}>}>` — Map of enum ID to the fields to update
+  - `enums{}.description` — New description for the enum; omit to keep it, empty string to clear it
+  - `enums{}.displayName` — New display name for the enum; omit to keep the current display name
+  - `enums{}.options` — Complete list of options after update; omit to keep the current options. Any option not listed is deleted — prefer ADD/UPDATE/DELETE_ENUM_OPTIONS for single-option edits.
+  - `enums{}.options[].id` — Id of the existing option, copied from a read of this enum
+
+### `GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES`
+
+List the types a field of an object type accepts, with the exact `typeIdentifier` to pass to ADD_OBJECT_TYPE_DEFINITIONS / ADD_TYPE_DEFINITION_FIELDS / UPDATE_TYPE_DEFINITION_FIELDS. Call this first: a `type` must be copied verbatim from here and can never be assembled by hand, so a field written without it is a guess and is rejected. Arrays are not listed — pick the base type and set the field's `arrayLevel` rather than bracketing the identifier. Omit `typeId` while the type is still being created.
+- `typeId`: `string` — The object type whose field is being typed. Omit it when the type does not exist yet — the properties of an ADD_OBJECT_TYPE_DEFINITIONS call take what this returns.
 
 ### `ADD_OBJECT_TYPE_DEFINITIONS`
 
 Create custom object types, each with a displayName and its initial fields. Ids are assigned by the platform and returned in the result — do not send one. Read list_object_type_groups first — creating an object type also writes the object-type group configuration.
-- `types` *(required)*: `array<{description?: string, displayName?: string, groupId?: string, private?: boolean, properties: array<{name: string, required?: boolean, type: string}>}>`
+- `types` *(required)*: `array<{description?: string, displayName?: string, groupId?: string, private?: boolean, properties: array<{arrayLevel?: integer, name: string, required?: boolean, type: string}>}>`
+  - `types[].displayName` — Name shown in the editor's object type list. Required unless the type is private, which may stay unnamed.
+  - `types[].groupId` — Target object-type group id; omit to add the type to the default ungrouped section
+  - `types[].private` — True for an internal structure that belongs to one feature (e.g. a webhook body) rather than to the project's object type list: it is hidden from the list, its name is exempt from the uniqueness check, and no selectable-types query will ever offer it — name it by the `typeIdentifier` this call echoes back. It fits only a slot that takes an inline object (an API or webhook body, an agent or flow output, another type's field), and only one such slot: a second one is rejected. Leave it unset for a type meant to be reused.
+  - `types[].properties[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+  - `types[].properties[].type` — The field's type: copy a `typeIdentifier` GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES returns, verbatim — never assemble one, an id that does not exist is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
 
 ### `UPDATE_OBJECT_TYPE_DEFINITIONS`
 
@@ -139,12 +156,14 @@ Update object types' own metadata (displayName / description / private); omitted
 ### `ADD_TYPE_DEFINITION_FIELDS`
 
 Add fields to an existing object type.
-- `fields` *(required)*: `array<{name: string, required?: boolean, type: string}>`
+- `fields` *(required)*: `array<{arrayLevel?: integer, name: string, required?: boolean, type: string}>`
+  - `fields[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+  - `fields[].type` — The field's type: copy a `typeIdentifier` GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES returns, verbatim — never assemble one, an id that does not exist is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
 - `typeId` *(required)*: `string`
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
+npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

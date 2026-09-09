@@ -21,7 +21,7 @@ Data permissions are configured coarse → fine:
 2. **Column**: which fields each operation covers.
 3. **Row**: a per-operation condition — a filter over existing rows for select, update and delete, a check on the incoming row for insert. Each one starts always-true, so a fresh grant is open until narrowed.
 
-Read before writing: `GET_ROLE_DETAIL`, naming every role the task will edit, for their grants and each operation's `hasCustomCondition` flag — it is the only read that satisfies the gate, and the role names are already in `GET_PROJECT_OVERVIEW`. When you need a row condition's schema path, take it from `GET_TABLE_PERMISSION` for the tables you are narrowing. Edit with `ADD_ROLES`, `UPDATE_ROLE`, `DELETE_ROLES` and the per-block setters `UPDATE_ROLE_TABLE_PERMISSION`, `UPDATE_ROLE_ACTION_FLOW_PERMISSION`, `UPDATE_ROLE_ZAI_PERMISSION`, `UPDATE_ROLE_PAYMENT_PERMISSION`, `UPDATE_ROLE_TPA_PERMISSION` for Third-Party API configurations. Account insert/delete is unavailable, and `id` is pinned into every table SELECT grant.
+Read before writing: `GET_ROLE_DETAIL`, naming every role the task will edit; the role names are already in `GET_PROJECT_OVERVIEW`. It reports each table by exception — the operations granted, the ones under `rowConditions` whose row condition has been narrowed, and `restrictedColumns` only where a grant covers less than the whole table, so an operation listed as granted and mentioned nowhere else is open on every column and every row. Tables the role cannot touch at all are named together in `tablesWithNoGrants`. Pass `blocks` when the task is about one block (the table block is nearly the whole payload). It does not carry the row conditions' schema paths — when you are narrowing one, read `GET_TABLE_PERMISSION` instead: it names the tables you are about to change, reports each operation's condition path, and satisfies the same gate, so the path arrives in the call right before the one that uses it. Edit with `ADD_ROLES`, `UPDATE_ROLE`, `DELETE_ROLES` and the per-block setters `UPDATE_ROLE_TABLE_PERMISSION`, `UPDATE_ROLE_ACTION_FLOW_PERMISSION`, `UPDATE_ROLE_ZAI_PERMISSION`, `UPDATE_ROLE_PAYMENT_PERMISSION`, `UPDATE_ROLE_TPA_PERMISSION` for Third-Party API configurations. Account insert/delete is unavailable, and `id` is pinned into every table SELECT grant.
 
 `allowAll` on `tpaPermission`, `actionflowPermission` or `zAiPermission` also covers resources added later — prefer explicit allow-lists unless broad access is intentional.
 
@@ -32,7 +32,9 @@ Read before writing: `GET_ROLE_DETAIL`, naming every role the task will edit, fo
 Simple single-table CRUD may run directly from the frontend when table, column, and row permissions fully express the authorization policy — do not wrap it in an Actionflow. Reach for a Backend Actionflow only when the rule cannot be expressed that way at all: it needs server-held secrets, cross-table atomicity, or multi-step state transitions.
 
 ### Row conditions (ABAC)
-Narrowing those conditions is a two-plugin job: this plugin has no tool that edits one — they live in the **bindings** area, whose tools are the `INSERT_CONDITION_BOOL_EXP` family. The check `SET_ROLE_PERMISSION_CHECK` seeds for an Actionflow or AI agent works the same way.
+Narrowing those conditions is a two-plugin job: this plugin has no tool that edits one — they live in the **bindings** area, whose tools are the `INSERT_CONDITION_BOOL_EXP` family, addressed by the condition path `GET_TABLE_PERMISSION` reports. The check `SET_ROLE_PERMISSION_CHECK` seeds for an Actionflow or AI agent works the same way.
+
+Never hand-build a permission schema path. It embeds the role's index in the schema and the table's internal id, neither of which any read reports on its own, so a path assembled from what a read did show resolves to nothing — copy the one a read returned.
 
 Each operation has its own condition node and its own row branch to compare against, so reusing the select recipe on another op fails:
 - `select` → path ends `/select/filter` → the branch holding the row being read
@@ -42,11 +44,11 @@ Each operation has its own condition node and its own row branch to compare agai
 - `count` / `aggregate` → no row branch exists, only the logged-in user and the current time, so they cannot be row-scoped. Whenever you narrow `select`, send `count` and `aggregate` `{enabled: false}` too, unless a whole-table count is meant to be public: a row-scoped `select` beside an open `count` still tells any user how many rows everyone else has.
 
 Narrowing one condition:
-1. `GET_TABLE_PERMISSION` for that table (or the result of `SET_ROLE_PERMISSION_CHECK`, or of `UPDATE_ROLE_TABLE_PERMISSION`) → that operation's condition schema path. `GET_ROLE_DETAIL` does not carry them.
+1. `GET_TABLE_PERMISSION` for that table (or the result of `UPDATE_ROLE_TABLE_PERMISSION`, which reports the same paths for the grants it just made, or of `SET_ROLE_PERMISSION_CHECK` for a flow/agent check) → that operation's condition schema path. `GET_ROLE_DETAIL` does not carry them.
 2. `INSERT_CONDITION_BOOL_EXP` at that path → returns a `conditionSchemaPath`. Copy it verbatim; never hand-build one.
-3. `GET_EXPRESSION_CONDITION_OPERATORS` at that path, then `UPDATE_EXPRESSION_CONDITION_OPERATOR` with an operator copied verbatim. The `target` and `value` operand slots do not exist until the operator is set — binding first fails with "Cannot find type definition under path …".
+3. `GET_EXPRESSION_CONDITION_OPERATORS` at that path, then `UPDATE_EXPRESSION_CONDITION_OPERATOR` with an operator copied verbatim. The `target` and `value` operand slots do not exist until the operator is set — binding first fails with "has no binding site at …/target".
 4. Fill both operands at `<conditionSchemaPath>/target` and `<conditionSchemaPath>/value`, addressed by `pathInHierarchicalMenu`. Read that path — branch label included — from `BROWSE_DATA_BINDING_OPTIONS` at the operand's own schema path and copy it verbatim; never hand-build one. Relations traverse, so a child table can compare against its parent's owner — that path is four segments deep: context root, row branch, relation, column. Every segment is a label from the tree, including the root.
-5. Delete the always-true placeholder the grant started with: `DELETE_CONDITION_BOOL_EXP` at `<path>/_and/[0]`. Harmless at runtime, but the editor renders it as an empty condition row, so the user sees a half-configured rule.
+5. Delete the always-true placeholder the grant started with: `DELETE_CONDITION_BOOL_EXP` at `<step 1's condition schema path>/_and/[0]` — the filter's own path, not the comparison path step 2 returned. Harmless at runtime, but the editor renders it as an empty condition row, so the user sees a half-configured rule.
 6. Shape multi-clause predicates with `NEST_CONDITION_BOOL_EXP`, `TOGGLE_CONDITION_BOOL_EXP_AND_OR`, `TOGGLE_CONDITION_BOOL_EXP_NOT`.
 7. Sync Backend.
 
@@ -61,7 +63,7 @@ A custom role does nothing until an account holds it. Two ways:
 
 ### Definition of done
 A permission task is finished only when all of these hold. Check them before reporting:
-1. Every operation you enabled shows `hasCustomCondition: true` in `GET_ROLE_DETAIL`, or is deliberately open.
+1. Every operation you enabled is listed under its table's `rowConditions` in `GET_ROLE_DETAIL`, or is deliberately open.
 2. `GET_ROLE_DETAIL` on **Anonymous User** *and* **Logged-in User** shows no unintended grant on the tables you touched. A newly created table lands in every role automatically, with select, insert, update, delete, count and aggregate all granted and unconditioned — the two predefined roles included. Observed on a deployed project: an unauthenticated request could read every row, and after only SELECT was revoked it could still INSERT. Checking Anonymous User alone leaves every logged-in user holding the same open grant.
 3. Any custom role you created is actually assigned to someone.
 4. "Sync Backend" has run.
@@ -78,29 +80,29 @@ If you stop short of any of these, say so explicitly and name which grants are s
 ```
 "User 1" is the user whose internal id ends in 1 (1000000000000001). Then:
 1. Confirm the user holds the role you expect.
-2. Read that role with `GET_ROLE_DETAIL`: is the operation enabled, is the column inside its grant, and does its row condition match the row the user expected?
+2. Read that role with `GET_TABLE_PERMISSION` on the table the 403 names: is the operation enabled, is the column inside its grant, and does its row condition match the row the user expected?
 3. Confirm "Sync Backend" ran after the last permission change.
 
 > Role permission (RBAC) must already be **activated** on the project — activation itself is editor-only (Settings → Permission Management) and every op below fails until then. Design the role + relation model first: for data isolation, model the one-to-many relations the row-level filters compare with `schema-table.md`; for 403 debugging, see `runtime-logs.md`.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
+npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.4 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
-npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.5 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
+npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -110,7 +112,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Intent | `name` | Required `args` |
 |---|---|---|
 | List roles | `GET_ALL_ROLES_INFO` | — |
-| Role detail (grants + condition paths) | `GET_ROLE_DETAIL` | `roleName` |
+| Role detail (grants, no condition paths) | `GET_ROLE_DETAIL` | `roleName` |
+| One role on named tables, with condition paths | `GET_TABLE_PERMISSION` | `roleName`, `tableDisplayNames` |
 | Create roles (minimal grants) | `ADD_ROLES` | `items` |
 | Rename a role | `UPDATE_ROLE` | `roleName` |
 | Delete roles | `DELETE_ROLES` | `roleNames` |
@@ -123,7 +126,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 Newly granted table operations get an always-true row condition and `SET_ROLE_PERMISSION_CHECK`
 seeds an always-true check — both return schema paths; narrow them with the condition tools at those
-paths (`data-binding.md`). `GET_ROLE_DETAIL` echoes every existing condition's schema path.
+paths (`data-binding.md`). `GET_TABLE_PERMISSION` reports an existing condition's path; never
+hand-build one: it embeds the role's index and the table's id, and no read reports either on its own.
 
 ## Arguments (generated from ztype)
 
@@ -133,17 +137,36 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 Create custom roles with the editor's minimal-grant defaults (extend them with the set_*_permission tools). If GET_ALL_ROLES_INFO reports "not activated", call ACTIVATE_ROLE_PERMISSION first.
 - `items` *(required)*: `array<{description?: string, name: string}>` — Custom roles to create. A new role starts with no table operations granted (except the account table's basic profile read/update), empty action-flow and API allow-lists, all AI agents allowed and the default payment permission — grant more via the UPDATE_ROLE_*_PERMISSION tools. Requires role permission (RBAC) to already be activated: when GET_ALL_ROLES_INFO reports that it is not activated, call ACTIVATE_ROLE_PERMISSION first.
+  - `items[].description` — Optional description of the role.
+  - `items[].name` — Display name of the new role; must be unique among roles, and fixed once the role has been deployed to the backend.
 
 ### `UPDATE_ROLE_TABLE_PERMISSION`
 
-Grant or revoke one role's operations across any number of tables, with per-operation column sets. List every table this role needs in `tables` — one call rewrites the whole role, so a second one for the same role only repeats the work. `tableDisplayName` is the display name from the database plugin's read tools, not the snake_case table name. `count` and `aggregate` cannot be row-scoped, so disable them whenever select is. The result reports each addressed table's resulting grant and the schema path of every row condition, so narrowing one needs no re-read. Read the role with GET_ROLE_DETAIL first: a write to a role this session has not read is rejected.
+Grant or revoke one role's operations across any number of tables, with per-operation column sets. List every table this role needs in `tables` — one call rewrites the whole role, so a second one for the same role only repeats the work. `tableDisplayName` is the display name from the database plugin's read tools, not the snake_case table name. `count` and `aggregate` cannot be row-scoped, so disable them whenever select is. The result reports each addressed table's resulting grant and the schema path of every row condition, so narrowing one needs no re-read. Read the role first — GET_ROLE_DETAIL, or GET_TABLE_PERMISSION when you are after a row condition's path: a write to a role this session has not read is rejected.
 - `denyAllTables`: `boolean` — Revoke every operation on every table first, then apply `tables` on top — so "lock this role down, except these" is one call. Without it a table absent from `tables` keeps the grant it already had. A newly created table reaches every role wide open, which is what makes this the usual follow-up to creating one.
 - `roleName` *(required)*: `string` — Display name of the role whose table permission to change (from GET_ALL_ROLES_INFO). Required.
 - `tables`: `array<{aggregate?: {columns?: array<string>, enabled?: boolean}, count?: {enabled?: boolean}, delete?: {enabled?: boolean}, insert?: {columns?: array<string>, enabled?: boolean}, select?: {columns?: array<string>, enabled?: boolean}, tableDisplayName: string, update?: {columns?: array<string>, enabled?: boolean}}>` — One entry per table to change — required unless `denyAllTables` is set, which revokes everything first and takes these as the exceptions. Put every table this role needs in a single call: the role is the unit that is rewritten, so a second call against the same role only repeats the work.
+  - `tables[].aggregate` — Aggregation permission; only numeric columns are grantable, others are dropped from the column set.
+  - `tables[].aggregate.columns` — Display names of the columns the operation may touch. Replaces the current column set. Omit to keep the current set, or — when granting the operation for the first time — to grant every column the operation allows; a read is never needed just to preserve what is there. Columns the operation cannot grant are silently dropped instead of rejected, so a column set read back from GET_TABLE_PERMISSION can be passed through unchanged; an empty list revokes the operation.
+  - `tables[].aggregate.enabled` — false revokes the operation for this role; true (or omitted while columns is set) grants it.
+  - `tables[].count` — Row-count permission (row-level; takes no columns).
+  - `tables[].count.enabled` — false revokes the operation for this role; true grants it.
+  - `tables[].delete` — Row-delete permission (row-level; takes no columns). Not available on the account table.
+  - `tables[].delete.enabled` — false revokes the operation for this role; true grants it.
+  - `tables[].insert` — Row-insert permission. Not available on the account table. Auto-generated columns (serial ids, created_at/updated_at, formula columns) are not grantable and are dropped from the column set.
+  - `tables[].insert.columns` — Display names of the columns the operation may touch. Replaces the current column set. Omit to keep the current set, or — when granting the operation for the first time — to grant every column the operation allows; a read is never needed just to preserve what is there. Columns the operation cannot grant are silently dropped instead of rejected, so a column set read back from GET_TABLE_PERMISSION can be passed through unchanged; an empty list revokes the operation.
+  - `tables[].insert.enabled` — false revokes the operation for this role; true (or omitted while columns is set) grants it.
+  - `tables[].select` — Row-read permission. Newly granted operations get an always-true row condition; narrow it via the condition tools at the schema paths this tool returns.
+  - `tables[].select.columns` — Display names of the columns the operation may touch. Replaces the current column set. Omit to keep the current set, or — when granting the operation for the first time — to grant every column the operation allows; a read is never needed just to preserve what is there. Columns the operation cannot grant are silently dropped instead of rejected, so a column set read back from GET_TABLE_PERMISSION can be passed through unchanged; an empty list revokes the operation.
+  - `tables[].select.enabled` — false revokes the operation for this role; true (or omitted while columns is set) grants it.
+  - `tables[].tableDisplayName` — Display name of the table (from GET_ALL_TABLE_DISPLAY_NAMES).
+  - `tables[].update` — Row-update permission. Auto-generated columns (serial ids, created_at/updated_at, formula columns) are not grantable and are dropped from the column set.
+  - `tables[].update.columns` — Display names of the columns the operation may touch. Replaces the current column set. Omit to keep the current set, or — when granting the operation for the first time — to grant every column the operation allows; a read is never needed just to preserve what is there. Columns the operation cannot grant are silently dropped instead of rejected, so a column set read back from GET_TABLE_PERMISSION can be passed through unchanged; an empty list revokes the operation.
+  - `tables[].update.enabled` — false revokes the operation for this role; true (or omitted while columns is set) grants it.
 
 ### `SET_ROLE_PERMISSION_CHECK`
 
-Seed a role's conditional check on one action flow / AI agent, on top of the allow-list: writes an always-true condition and returns its schema path, so it gates nothing until narrowed. Calling it again for the same target resets the check back to always-true. Read the role with GET_ROLE_DETAIL first: a write to a role this session has not read is rejected.
+Seed a role's conditional check on one action flow / AI agent, on top of the allow-list: writes an always-true condition and returns its schema path, so it gates nothing until narrowed. Calling it again for the same target resets the check back to always-true. Read the role first — GET_ROLE_DETAIL, or GET_TABLE_PERMISSION when you are after a row condition's path: a write to a role this session has not read is rejected.
 - `category` *(required)*: `enum(ACTION_FLOW|ZAI)` — Which permission block the check gates: ACTION_FLOW or ZAI.
 - `roleName` *(required)*: `string` — Display name of the role the check belongs to (from GET_ALL_ROLES_INFO). Required.
 - `targetId` *(required)*: `string` — The action-flow id / AI-agent config id the check applies to. The check gates calls to that target for this role on top of the allow-list. This tool seeds the target's check as an always-true condition and returns its checkSchemaPath — narrow the condition via the condition tools (INSERT_CONDITION_BOOL_EXP etc.) at that path. Calling it again for the same target resets the check back to always-true.
@@ -151,6 +174,6 @@ Seed a role's conditional check on one action flow / AI agent, on top of the all
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
+npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

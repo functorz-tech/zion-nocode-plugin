@@ -15,26 +15,29 @@ A body-carrying method needs a body FORMAT, and `SET_API_CONTENT_TYPE` is what s
 
 A media field, or an object field carried as a JSON string, cannot travel over HTTP as itself: it needs a conversion, and a media field left without one leaves the API incomplete. `GET_API_CODEC_OPTIONS` says which slots need one and what each allows; `SET_API_CODECS` applies it and `DELETE_API_CODECS` removes it.
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates every op below on pre-refactor projects, where the API-integration workspace feature does not exist. On a pre-refactor project integrate external HTTP endpoints as TPA configs (`third-party-api.md`) instead. Check `npx -y zion-mcp@2.7.4 schema load` → `typeSystem` first.
+### Types
+Every `type` argument here is picked, not written: call `GET_API_SELECTABLE_TYPES` for the slot being filled and copy a returned `typeIdentifier` verbatim. A private object type belongs to the one feature that owns it and is never offered to another, so to reuse a shape some other feature owns, publish it with `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` and select the public copy. This API's own JSON body type is the exception — it is already this API's, so describe it in place with `ADD_TYPE_DEFINITION_FIELDS`. Lists are not enumerated — the nesting has no end — so a list response or input variable is a returned identifier plus `arrayLevel: 1`; the URL, header and form-body parameters hold one value, take no `arrayLevel`, and accept no list at all.
+
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates every op below on pre-refactor projects, where the API-integration workspace feature does not exist. On a pre-refactor project integrate external HTTP endpoints as TPA configs (`third-party-api.md`) instead. Check `npx -y zion-mcp@2.7.5 schema load` → `typeSystem` first.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
+npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.4 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
-npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.5 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
+npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -45,7 +48,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 |---|---|---|
 | List workspaces | `GET_ALL_API_WORKSPACES` | — |
 | List API endpoints | `GET_ALL_APIS_INFO` | — |
-| API detail (ids, params, responses) | `GET_API_DETAIL` | `apiId` |
+| API detail (ids, params, responses) | `GET_API_DETAIL` | `apiId` or `schemaPath` |
+| Types one slot accepts (needs `apiId`, or `workspaceId` for a constant) | `GET_API_SELECTABLE_TYPES` | `slot` |
 | Add workspaces | `ADD_API_WORKSPACES` | `items` |
 | Update a workspace | `UPDATE_API_WORKSPACE` | `workspaceId` |
 | Delete workspaces | `DELETE_API_WORKSPACES` | `workspaceIds` |
@@ -74,11 +78,18 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Set a body slot's wire conversion | `SET_API_CODECS` | `apiId`, `items`, `target` |
 | Remove a body slot's wire conversion | `DELETE_API_CODECS` | `apiId`, `items`, `target` |
 
-Build top-down: `ADD_API_WORKSPACES` → `ADD_API_WORKSPACE_CONSTANTS` (API keys / base URLs) → `ADD_APIS` (each under a `workspaceId`) → `ADD_API_PARAMETERS` + `ADD_API_RESPONSE_CONFIGS` + `ADD_API_INPUT_VARIABLES`. Read `apiId` / `workspaceId` and parameter / response unique ids back from `GET_ALL_API_WORKSPACES` / `GET_API_DETAIL` before editing or deleting — never fabricate them. Bind a constant or input variable into a parameter value with `data-binding.md`.
+Build top-down: `ADD_API_WORKSPACES` → `ADD_API_WORKSPACE_CONSTANTS` (API keys / base URLs) → `ADD_APIS` (each under a `workspaceId`) → `ADD_API_PARAMETERS` + `ADD_API_RESPONSE_CONFIGS` + `ADD_API_INPUT_VARIABLES`. Read `apiId` / `workspaceId` and parameter / response unique ids back from `GET_ALL_API_WORKSPACES` / `GET_API_DETAIL` before editing or deleting — never fabricate them. Every type on an API is a `typeIdentifier` copied verbatim from `GET_API_SELECTABLE_TYPES` for that exact slot — `RESPONSE_BODY`, `JSON_BODY`, `INPUT_VARIABLE`, `WORKSPACE_CONSTANT`, or one of `PATH_`/`QUERY_`/`HEADER_`/`FORM_BODY_PARAMETER`. What a slot accepts depends on where it sits, so ask per slot (passing that API's `apiId`) and never assemble or edit the string; a value off that list is rejected. Bind a constant or input variable into a parameter value with `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
 Shapes and field docs below are generated from ztype's `tool-schemas.json` (the source of truth) — never hand-built. `schemaPath` is a `DiffPathComponents` array (`{key}` for an object step, `{index}` for an array step) and is always read back from a discovery call (see above), never fabricated.
+
+### `GET_API_SELECTABLE_TYPES`
+
+Return the typeIdentifiers selectable for one API type slot — an input variable, a path / query / header / form-body parameter, the JSON body, a response body, or a workspace constant. What a slot accepts depends on where it sits, so ask per slot, then copy a returned typeIdentifier verbatim into ADD_API_INPUT_VARIABLES, ADD_API_PARAMETERS, ADD_API_RESPONSE_CONFIGS or ADD_API_WORKSPACE_CONSTANTS — never assemble one by hand — brackets in a `type` are rejected. A list is the returned identifier with `arrayLevel: 1` (2 for a list of lists), where the slot takes one.
+- `apiId`: `string` — The API whose slot is being filled. Required for every slot except WORKSPACE_CONSTANT, which is workspace-level and takes `workspaceId` instead.
+- `slot` *(required)*: `enum(INPUT_VARIABLE|PATH_PARAMETER|QUERY_PARAMETER|HEADER_PARAMETER|FORM_BODY_PARAMETER|JSON_BODY|RESPONSE_BODY|WORKSPACE_CONSTANT)`
+- `workspaceId`: `string` — WORKSPACE_CONSTANT only: the workspace the constant belongs to.
 
 ### `ADD_API_WORKSPACES`
 
@@ -88,13 +99,25 @@ Create one or more API workspaces (name + description). Add their constants and 
 ### `ADD_API_WORKSPACE_CONSTANTS`
 
 Add shared constants (base URLs, API keys, tokens) to a workspace; its APIs reference them instead of inlining secrets.
-- `items` *(required)*: `array<{name: string, type: string}>`
+- `items` *(required)*: `array<{arrayLevel?: integer, name: string, type: string}>`
+  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+  - `items[].type` — copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
 - `workspaceId` *(required)*: `string`
 
 ### `ADD_APIS`
 
 Create one or more API endpoints (name, HTTP method, URL) under a workspaceId. Each is seeded with empty parameters / responses; add those afterwards.
-- `items` *(required)*: `array<{displayName: string, inputVariables?: array<{displayName: string, type: string}>, method: enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD), paginationEnabled?: boolean, responseConfigs?: array<{isCustom?: boolean, name: string, responseType?: string, statusCode: array<string>}>, url: string, useAsData?: boolean, workspaceId: string}>`
+- `items` *(required)*: `array<{displayName: string, inputVariables?: array<{arrayLevel?: integer, displayName: string, type: string}>, method: enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD), paginationEnabled?: boolean, responseConfigs?: array<{arrayLevel?: integer, isCustom?: boolean, name: string, responseType?: string, statusCode: array<string>}>, url: string, useAsData?: boolean, workspaceId: string}>`
+  - `items[].inputVariables[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+  - `items[].inputVariables[].type` — copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
+  - `items[].paginationEnabled` — When true, 'pageIndex'/'pageSize' input variables are seeded to page list responses.
+  - `items[].responseConfigs` — A Default fallback config is always created even when omitted. Request parameters are added separately with ADD_API_PARAMETERS.
+  - `items[].responseConfigs[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not. Wraps the default optional string when [responseType] is omitted.
+  - `items[].responseConfigs[].isCustom` — true → matches only the listed status codes; false (default) → the fallback config that matches everything else (an API always has exactly one).
+  - `items[].responseConfigs[].responseType` — Type of the response body; defaults to an optional string. Otherwise copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
+  - `items[].responseConfigs[].statusCode` — HTTP status codes this config matches (e.g. ['200']); the fallback ignores them.
+  - `items[].url` — Base URL only — scheme + host (+ port), e.g. "https://api.example.com". No sub-path, query string or fragment: add the sub-path with ADD_API_PARAMETERS as ordered PATH parameters and the query string as QUERY parameters.
+  - `items[].useAsData` — true (default) exposes the API as a queryable data source; false makes it action-only.
 
 ### `UPDATE_API`
 
@@ -110,23 +133,37 @@ Update an endpoint's scalar config: name, method, base URL, pagination, or wheth
 
 Add request parameters to an API. Each carries a position (path / query / header / body) and a type.
 - `apiId` *(required)*: `string`
-- `items` *(required)*: `array<object · location: PATH → {value: string} | JSON_BODY → {type: string} | QUERY|HEADER|PATH|FORM_BODY → {displayName?: string, name: string, type: string}>` — Parameters to add. The item shape is chosen by `location`: QUERY/HEADER/FORM_BODY (and variable PATH segments) carry name + type, a constant PATH segment carries `value`, and JSON_BODY carries just the body type.
+- `items` *(required)*: `array<object · location: PATH → {value: string} | JSON_BODY → {arrayLevel?: integer, type: string} | QUERY|HEADER|PATH|FORM_BODY → {displayName?: string, name: string, type: string}>` — Parameters to add. The item shape is chosen by `location`: QUERY/HEADER/FORM_BODY (and variable PATH segments) carry name + type, a constant PATH segment carries `value`, and JSON_BODY carries just the body type.
+  - `items[].location` *(when `location=PATH`)* — Must be PATH.
+  - `items[].location` *(when `location=JSON_BODY`)* — Must be JSON_BODY; an API has at most one JSON body.
+  - `items[].location` *(when `location=QUERY|HEADER|PATH|FORM_BODY`)* — Where the parameter lives: QUERY, HEADER, PATH or FORM_BODY.
+  - `items[].value` *(when `location=PATH`)* — The literal text of this path segment, e.g. 'v2'. Supplying `value` is what makes a PATH item a literal segment rather than a variable one.
+  - `items[].arrayLevel` *(when `location=JSON_BODY`)* — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+  - `items[].type` — copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
+  - `items[].displayName` *(when `location=QUERY|HEADER|PATH|FORM_BODY`)* — PATH only: display name of the path variable.
+  - `items[].name` *(when `location=QUERY|HEADER|PATH|FORM_BODY`)* — Parameter name (for PATH, the variable segment's name).
 
 ### `ADD_API_RESPONSE_CONFIGS`
 
 Add typed response configs to an API — the shape of the JSON it returns, so downstream can bind to its fields.
 - `apiId` *(required)*: `string`
-- `items` *(required)*: `array<{isCustom?: boolean, name: string, responseType?: string, statusCode: array<string>}>`
+- `items` *(required)*: `array<{arrayLevel?: integer, isCustom?: boolean, name: string, responseType?: string, statusCode: array<string>}>`
+  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not. Wraps the default optional string when [responseType] is omitted.
+  - `items[].isCustom` — true → matches only the listed status codes; false (default) → the fallback config that matches everything else (an API always has exactly one).
+  - `items[].responseType` — Type of the response body; defaults to an optional string. Otherwise copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
+  - `items[].statusCode` — HTTP status codes this config matches (e.g. ['200']); the fallback ignores them.
 
 ### `ADD_API_INPUT_VARIABLES`
 
 Declare input variables on an API — the values a caller supplies, bindable into the URL / parameters.
 - `apiId` *(required)*: `string`
-- `items` *(required)*: `array<{displayName: string, type: string}>`
+- `items` *(required)*: `array<{arrayLevel?: integer, displayName: string, type: string}>`
+  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+  - `items[].type` — copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
+npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

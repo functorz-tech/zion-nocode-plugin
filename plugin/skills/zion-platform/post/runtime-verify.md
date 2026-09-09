@@ -9,7 +9,11 @@ Draft versus deployed, which is the distinction that decides whether a green res
 
 What "done" means here:
 - an action flow you built or changed is not done until `runtime.debug_flow` has run it and you have read the terminal node's output;
-- a permission change is not done until you have run the same read twice, once as `admin` and once as the role, and compared them — `admin` bypasses row and column permissions, so a single admin read tells you nothing about what a user sees;
+- a permission change is not done until you have watched the rule act on data whose existence you are sure of. Reading once as a user proves nothing on its own: an empty result means either "the rule hid it" or "there was nothing there", and those need different fixes. Get a second observation, in this order of preference:
+  1. `runtime.login` with credentials the user gives you — a real account with its real roles, and the only way to test a rule that keys on a named role without permission to edit the project's backend. Ask for them; do not guess them.
+  2. `as: "admin"` alongside `as: "<role>"`, if this session has it. `admin` bypasses row and column permissions, so the pair reads as ground-truth-versus-user over data you did not create. Cheapest when it is available, and unavailable to a session that cannot edit the project's backend.
+Neither is open to a session with no credentials to hand, so say which rule you could not verify and why instead of reporting it done;
+- the identity tiers are not one axis, and a rule usually keys on which tier you are in rather than on who you are. Read the same data as each tier the rule is supposed to distinguish, and compare: `as: "anonymous"` sends no credential at all — a logged-out visitor, the only identity carrying the Anonymous User role, and where public data leaks; an account from `runtime.login` is signed in, carrying Logged-in User plus the project's own custom roles, which is a different rung and usually a different answer. Signed-out versus signed-in is the pair most often wrong, so run it whenever a rule claims to require a login;
 - if a check cannot be run, say which one and why. Never report work as verified because it looked right.
 
 When a run fails, its nodes carry a `traceId`: pass it to `logs.search` as `traceId: "…"` to get the server-side detail.
@@ -58,20 +62,20 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-npx -y zion-mcp@2.7.4 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-npx -y zion-mcp@2.7.4 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.5 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+npx -y zion-mcp@2.7.5 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
 `runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 
 ## How to drive it (CLI)
 
 ```bash
-npx -y zion-mcp@2.7.4 runtime query --tableName order --where '{"status":{"_eq":"PAID"}}' --fields '["id","status","total"]'
-npx -y zion-mcp@2.7.4 runtime insert --tableName order --objects '[{"status":"PAID","total":100}]'
-npx -y zion-mcp@2.7.4 runtime update --tableName order --where '{"id":{"_eq":42}}' --set '{"status":"SHIPPED"}'
-npx -y zion-mcp@2.7.4 runtime delete --tableName order --where '{"id":{"_eq":42}}'
-npx -y zion-mcp@2.7.4 runtime graphql --query 'query { order_aggregate { aggregate { count } } }'
-npx -y zion-mcp@2.7.4 runtime run-code --jsCode 'const total = 2 + 2; total;'
+npx -y zion-mcp@2.7.5 runtime query --tableName order --where '{"status":{"_eq":"PAID"}}' --fields '["id","status","total"]'
+npx -y zion-mcp@2.7.5 runtime insert --tableName order --objects '[{"status":"PAID","total":100}]'
+npx -y zion-mcp@2.7.5 runtime update --tableName order --where '{"id":{"_eq":42}}' --set '{"status":"SHIPPED"}'
+npx -y zion-mcp@2.7.5 runtime delete --tableName order --where '{"id":{"_eq":42}}'
+npx -y zion-mcp@2.7.5 runtime graphql --query 'query { order_aggregate { aggregate { count } } }'
+npx -y zion-mcp@2.7.5 runtime run-code --jsCode 'const total = 2 + 2; total;'
 ```
 
 `runtime run-code` executes the snippet in the app's Run Code sandbox and returns its value, with
@@ -83,13 +87,13 @@ These run against the **deployed** app through the admin channel, which bypasses
 permissions — a row you can read here is not necessarily a row your users can read.
 
 ### Yours alone
-Both you and the in-editor agent can deploy the backend — `npx -y zion-mcp@2.7.4 project sync-backend` here,
+Both you and the in-editor agent can deploy the backend — `npx -y zion-mcp@2.7.5 project sync-backend` here,
 `deploy.sync_backend` there — and either way the loop is the same: edit, deploy, then test what
 you deployed, because a runtime call always hits the DEPLOYED app. These two have no in-editor
 counterpart at all:
 
-- `npx -y zion-mcp@2.7.4 schema validate` — type-check the loaded schema before deploying it.
-- `npx -y zion-mcp@2.7.4 site deploy` — ship a built frontend directory, with `site status` / `site abort` for the run; a PROD target needs a human to approve it.
+- `npx -y zion-mcp@2.7.5 schema validate` — type-check the loaded schema before deploying it.
+- `npx -y zion-mcp@2.7.5 site deploy` — ship a built frontend directory, with `site status` / `site abort` for the run; a PROD target needs a human to approve it.
 
 ### Not available from this CLI
 The verification contract above is written for the in-editor agent, which has tools this CLI does
@@ -98,6 +102,7 @@ not. Do not call these; do not report a check as done that needed one.
 - `runtime.debug_flow` — the draft lives in the editor session, which this CLI has none of — deploy with `project sync-backend`, then invoke the flow through `runtime graphql` and read the outcome with `runtime query` and `logs search`.
 - `runtime.invoke_flow` — call `fz_invoke_action_flow_default_by_latest_version` (or `fz_create_action_flow_task` plus `fz_action_flow_result`) through `runtime graphql` yourself.
 - `runtime.as_user` — there is no identity switching here at all — every call goes as admin, so a permission check cannot be run from this CLI. Say so rather than reporting an admin read as evidence of what a user sees.
+- `runtime.login` — there is no per-identity session here, so credentials cannot be exchanged for one. Every call goes as admin, which bypasses the rule you would be testing.
 - `runtime.status` — nothing here reports whether the draft is ahead of the deployed app; run `project sync-backend` first if you need to be sure of what you are testing.
 - `zai.debug_chat` — the draft agent is editor-only — invoke a DEPLOYED agent through `runtime graphql` with the ZAI conversation operations.
 - `web.fetch_page` — fetch the page with your own tools.

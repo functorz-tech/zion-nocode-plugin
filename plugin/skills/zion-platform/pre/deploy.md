@@ -16,13 +16,16 @@ Call it before you test anything against the runtime or tell the user their back
 - IN_PROGRESS — the pipeline was still running when the wait expired. Nothing is wrong; call project sync-backend again to keep waiting for the same pipeline.
 - NOT_STARTED — nothing was deployed. The usual cause is the user dismissing the save confirmation the editor raises when the project changed elsewhere; tell them rather than retrying in a loop.
 
+### One backend, every client app
+A project has ONE backend and any number of client apps on top of it. A sync redeploys that shared backend, so the data model, flows, APIs and permissions you changed take effect for every one of them at once — including apps you are not editing and cannot see from this session. Before syncing a project with more than one client app, say which change you are about to make live and that it lands for all of them; the confirmation names the apps.
+
 ### What it is not
 Syncing is not publishing. The user's live web or mini-program app is released separately through the editor's Publish flow, which is theirs to run — a sync makes the backend match the editor, it does not push a new version of their app to end users.
 
 ## How to drive it (CLI only)
 
 ```bash
-npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
+npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
 ```
 
 Every schema edit lands in the CRDT session immediately, but the running backend keeps serving the previously synced schema until `project sync-backend`. So a data model, action flow, API, permission, secret, or AI agent change is invisible to anything that talks to the live app — including `runtime query`, `runtime graphql`, and a published site — until you sync.

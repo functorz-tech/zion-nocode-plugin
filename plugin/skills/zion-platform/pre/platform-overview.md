@@ -70,6 +70,8 @@ Data binding connects data sources to component properties. A property can be se
 * **CONST_VALUE**: a literal constant (string, number, boolean).
 * **DISPLAY_NAME**: rename the component's displayed label.
 
+Every bindable slot — a component property, an action-flow node's input, a request filter's comparison value — is addressed by a **schemaPath**: an ordered array of steps into the project's JSON schema, `{"key":"<field>"}` into an object or `{"index":N}` into an array, never both in one step. A schemaPath is read back, never composed by hand — the call that creates a slot echoes the path of what it made, and the context reads return the finer paths inside it. Build top-down (create, read back the echoed path, then drill in) and the path you need is always one you already hold.
+
 Lists render one row per record from their data source. Children inside a list bind to the list's "Current Item" context (a scoped reference to that row's fields) rather than querying a new table — this preserves the relational link.
 
 ---

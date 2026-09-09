@@ -4,6 +4,8 @@ Use this router only after `schema load` returned `post_type_system_refactor`.
 Read only the capability files needed for the task. Never read from the sibling variant directory.
 A capability absent from this directory is unavailable for this project variant.
 
+Shared vocabulary — **schemaPath**: the address of one bindable slot (a component property, an action-flow node's input, a request filter's comparison value). It is an ordered array of steps into the project schema, `{"key":"<field>"}` into an object or `{"index":N}` into an array, never both in one step, and it is always read back from the call that made the slot or from a context read — never hand-built. `data-binding.md` has the discovery call per slot kind.
+
 ## Capabilities
 
 Each capability is a sibling file in this skill folder. When a task calls for one, read that file for its domain rules and `zion-mcp` CLI recipes. Work data-first: build the data model before the UI that displays it and the action flows that mutate it.

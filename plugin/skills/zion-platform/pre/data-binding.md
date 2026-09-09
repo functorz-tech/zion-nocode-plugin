@@ -44,22 +44,22 @@ A FORMULA or CONDITIONAL value is built in several steps at the value's schema p
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
+npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.4 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
-npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.5 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
+npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -170,17 +170,17 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 - `maxChars`: `integer` — Approximate output size limit in characters (default 8000, clamped to [2000, 40000]). Raise it deliberately when one complete tree beats several drill-down calls.
 - `menuPath`: `array<string>` — Menu path to drill into, copied verbatim from a truncation marker of a previous call (option names from the tree root). Omit to browse from the root.
 - `rootLevelNameContains`: `string` — Case-insensitive substring that keeps only the matching entries of the level being browsed (the direct children of menuPath, or the tree root when menuPath is omitted); menus and bindable values alike, and never any deeper level. Use it when one level is too wide to read — the surviving branches then get the whole character budget.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the binding slot, taken from a read tool's output; never hand-built.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `CREATE_OPTION_BINDING`
 - `operation`: `enum(REPLACE|CONCAT)` — Specifies how to apply the data: 'REPLACE' overwrites the current value, 'CONCAT' appends to it. Default is 'REPLACE'.
 - `pathInHierarchicalMenu` *(required)*: `array<string>` — The full hierarchical path to the specific data option (VALUE) to be bound, picked from the BROWSE_DATA_BINDING_OPTIONS tree: the menuPath you drilled into (if any) + the option's path in that result. Never hand-built.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The specific schema path in the project where the data binding is occurring.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `CREATE_CONST_BINDING`
 - `constantValue` *(required)*: `boolean | string | number` — The constant value to set (e.g. 'Create Post', 0, true).
 - `operation`: `enum(REPLACE|CONCAT)` — Specifies how to apply the data: 'REPLACE' overwrites the current value, 'CONCAT' appends to it. Default is 'REPLACE'.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The specific schema path in the project where the data binding is occurring.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `CREATE_FORMULA_BINDING`
 
@@ -188,84 +188,88 @@ Create a formula binding at a schema path that computes a value with an operator
 - `config`: `object · kind: enum(GEO_DISTANCE|GEO_POINT_GET_VALUE|DECIMAL|NUMBER_FORMATTING|DURATION_FORMATTING|DURATION|TIME_GET_PART|TIME_OPERATION|GET_CURRENT_TIME|DATE_TIME_FORMATTING|RELATIVE_TIME) · per-kind: {language: enum(EN|ZH)} | {clearTrailingZeros: boolean, roundingMode: enum(HALF_EVEN|HALF_UP|HALF_DOWN|UP|DOWN|CEILING|FLOOR)} | {dateTimeUnit: enum(year|month|day|hour|minute|second|millisecond|weekday|week)} | {timeUnit: enum(day|hour|minute|second|millisecond)} | {unit: enum(METER|KILOMETER|MILE)} | {getValueType: enum(latitude|longitude)} | {timeType: enum(DATE|TIME|TIMESTAMP)} | {decimalPlaces?: integer, format: enum(THOUSANDS_SEPARATOR|PERCENT)} | {hideSuffix?: boolean, language: enum(EN|ZH)} | {direction: enum(later|before)}` — Optional non-databinding scalar config for the created formula (e.g. distance unit, rounding mode, time unit). The config kind must match the chosen operator, otherwise the call fails. Use GET_FORMULA_CONFIG_OPTIONS on an existing formula to discover the exact shape and the allowed values.
 - `operation`: `enum(REPLACE|CONCAT)` — Specifies how to apply the data: 'REPLACE' overwrites the current value, 'CONCAT' appends to it. Default is 'REPLACE'.
 - `operator`: `enum(toText|toInteger|toDecimal|toDateTime|+|-|*|/|%|min|… 80 total)` — The formula operator — pick one returned by GET_FORMULA_OPERATORS at this path.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The specific schema path in the project where the data binding is occurring.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `SET_FORMULA_CONFIG`
 
 Set the non-databinding scalar config of an existing formula (e.g. rounding mode, time unit); the shape must match the operator — read it with GET_FORMULA_CONFIG_OPTIONS.
 - `config` *(required)*: `object · kind: enum(GEO_DISTANCE|GEO_POINT_GET_VALUE|DECIMAL|NUMBER_FORMATTING|DURATION_FORMATTING|DURATION|TIME_GET_PART|TIME_OPERATION|GET_CURRENT_TIME|DATE_TIME_FORMATTING|RELATIVE_TIME) · per-kind: {language: enum(EN|ZH)} | {clearTrailingZeros: boolean, roundingMode: enum(HALF_EVEN|HALF_UP|HALF_DOWN|UP|DOWN|CEILING|FLOOR)} | {dateTimeUnit: enum(year|month|day|hour|minute|second|millisecond|weekday|week)} | {timeUnit: enum(day|hour|minute|second|millisecond)} | {unit: enum(METER|KILOMETER|MILE)} | {getValueType: enum(latitude|longitude)} | {timeType: enum(DATE|TIME|TIMESTAMP)} | {decimalPlaces?: integer, format: enum(THOUSANDS_SEPARATOR|PERCENT)} | {hideSuffix?: boolean, language: enum(EN|ZH)} | {direction: enum(later|before)}` — The non-databinding scalar config to apply to the formula at the path. The config kind must match the target formula; call GET_FORMULA_CONFIG_OPTIONS first to discover the exact shape and the allowed values for each field.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The schema path of the formula binding whose scalar config should be set.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `CREATE_CONDITIONAL_BINDING`
 
 Create a conditional binding at a schema path: a value chosen by the first branch whose predicate is true. initialBranchNames seeds the branches; operation is REPLACE or CONCAT. Add more branches with INSERT_CONDITIONAL_DATA, build each branch's predicate with the condition tools below, and fill each branch value with a binding tool.
 - `initialBranchNames`: `array<string>` — Display names of the initial branches; two branches are created when omitted.
 - `operation`: `enum(REPLACE|CONCAT)` — Specifies how to apply the data: 'REPLACE' overwrites the current value, 'CONCAT' appends to it. Default is 'REPLACE'.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — The specific schema path in the project where the data binding is occurring.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `INSERT_CONDITIONAL_DATA`
 
 Add a branch (a predicate plus the value it yields) to a conditional binding, after an existing branch id.
 - `afterId`: `string` — Insert after the branch with this id; inserts at the front when omitted.
 - `conditionData`: `{condition?: object, name?: string, value?: object}` — Initial branch content; omitted parts default to an always-true condition, an empty value of the binding's type, and an auto-generated name.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+  - `conditionData.condition` — Full replacement condition; null keeps the current one (a new branch starts always-true — prefer narrowing it via the condition tools at the branch's condition path).
+  - `conditionData.value` — Full replacement value binding; null keeps the current one (a new branch starts with an empty value — prefer filling it via the CREATE_*_BINDING tools at the branch's value path).
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `UPDATE_CONDITIONAL_DATA`
 
 Update a branch of a conditional binding (e.g. rename it) by its schema path.
 - `conditionData` *(required)*: `{condition?: object, name?: string, value?: object}`
+  - `conditionData.condition` — Full replacement condition; null keeps the current one (a new branch starts always-true — prefer narrowing it via the condition tools at the branch's condition path).
+  - `conditionData.value` — Full replacement value binding; null keeps the current one (a new branch starts with an empty value — prefer filling it via the CREATE_*_BINDING tools at the branch's value path).
 - `id` *(required)*: `string` — Id of the branch to update.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `INSERT_CONDITION_BOOL_EXP`
 
 Add a comparison to a branch's predicate at the given where-expression schema path. Returns the new comparison's conditionSchemaPath — copy it verbatim into UPDATE_EXPRESSION_CONDITION_OPERATOR and extend it with /target and /value for the operand bindings; never hand-build condition paths.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the target element, taken from a read tool's output (e.g. a conditionSchemaPath / checkSchemaPath from GET_ROLE_DETAIL, node and binding paths from the entity detail tools); never hand-built.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `UPDATE_EXPRESSION_CONDITION_OPERATOR`
 
 Set the comparison operator of a condition at the given schema path (values from GET_EXPRESSION_CONDITION_OPERATORS).
 - `operator` *(required)*: `string` — Operator wire name (e.g. '_eq', '_gt', '_in') — pick one returned by GET_EXPRESSION_CONDITION_OPERATORS for this condition.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the condition whose operator to set, from a read tool's output.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>` — Schema path of the condition whose operator to set.
 
 ### `GET_REQUEST_FILTER_CONTEXT`
 
 Inspect a request's filters before editing them. Call this first; never hand-build a filter or column path — copy the column paths and operators it returns verbatim. Pass the schema path of the query/mutation request, or of the action-flow query/mutation node that owns it (from GET_ACTION_FLOW_DETAIL). When the result says supportsConditionalFilters: false (an action-flow update/delete node has ONE bare where, not filter groups), only the where-condition tools apply — use the single entry's whereSchemaPath and skip the conditional-filter and sort tools. Insert nodes have no request filter.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the target element, taken from a read tool's output (e.g. a conditionSchemaPath / checkSchemaPath from GET_ROLE_DETAIL, node and binding paths from the entity detail tools); never hand-built.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `ADD_REQUEST_CONDITIONAL_FILTER`
 
 Add a named conditional filter (a where + sort group gated by its own condition) to a request. The always-applied Default filter already exists; add more only for conditionally-applied filtering.
 - `afterId`: `string` — Insert the new filter right after the conditional filter with this id; inserts at the front when omitted. Must reference a non-Default filter: the Default filter is always the last branch (its always-true condition would short-circuit any filter placed after it), so a new filter is always placed before the Default filter — passing the Default filter's id is rejected.
 - `name`: `string` — Display name for the new conditional filter; auto-generated when omitted.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the query/mutation request (or the action-flow query/mutation node that owns it). Get it from GET_REQUEST_FILTER_CONTEXT.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>` — Schema path of the query/mutation request (or the action-flow query/mutation node that owns it). Get it from GET_REQUEST_FILTER_CONTEXT.
 
 ### `UPDATE_REQUEST_CONDITIONAL_FILTER`
 
 Rename a conditional filter by id (from GET_REQUEST_FILTER_CONTEXT). The Default filter cannot be renamed.
 - `id` *(required)*: `string` — Id of the conditional filter to rename; the Default filter cannot be renamed.
 - `name` *(required)*: `string` — New display name for the conditional filter.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `ADD_REQUEST_FILTER_CONDITION`
 
 Add a column where-condition to a conditional filter. Target the filter's whereSchemaPath (or a nested AND/OR within it) from GET_REQUEST_FILTER_CONTEXT, pass the column's pathComponents copied verbatim from selectableColumns, and pick an operator from that column's allowedOperators (defaults to _eq). The comparison value is seeded empty — fill it afterwards with a binding tool at the condition's value path.
 - `columnPathComponents` *(required)*: `array<{arguments?: map<string, object>, componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — The column to filter on, as a `pathComponents` list copied verbatim from a GET_REQUEST_FILTER_CONTEXT `selectableColumns` entry — never hand-built.
 - `operator`: `string` — Comparison operator (e.g. `_eq`, `_neq`, `_gt`, `_lt`, `_gte`, `_lte`, `_is_null`, `_is_not_null`, `_in`, `_nin`, `_like`, `_ilike`). Defaults to `_eq`. Pick one from the column's `allowedOperators` in GET_REQUEST_FILTER_CONTEXT.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the target conditional filter's `where` (the `whereSchemaPath` from GET_REQUEST_FILTER_CONTEXT), or a nested AND/OR sub-expression within it to append into.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>` — Schema path of the target conditional filter's `where` (the `whereSchemaPath` from GET_REQUEST_FILTER_CONTEXT), or a nested AND/OR sub-expression within it to append into.
 - `value`: `object` — Optional comparison value binding; an empty value of the column's type is seeded when omitted, to be filled afterwards with a CREATE_*_BINDING tool on this condition's `value`.
 
 ### `UPDATE_REQUEST_FILTER_CONDITION_OPERATOR`
 
 Change the comparison operator of an existing column where-condition at the given schema path (same operator values as ADD_REQUEST_FILTER_CONDITION).
 - `operator` *(required)*: `string` — New comparison operator — pick from the column's `allowedOperators` in GET_REQUEST_FILTER_CONTEXT.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the column condition whose operator should change.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>` — Schema path of the column condition whose operator should change.
 
 ### `ADD_REQUEST_SORT_CONFIG`
 
 Add a sort rule to a conditional filter. Target the filter's sortConfigsSchemaPath from GET_REQUEST_FILTER_CONTEXT and pass the column pathComponents copied from selectableColumns; direction defaults to ascending.
 - `field` *(required)*: `array<{arguments?: map<string, object>, componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — The column to sort by, as a `pathComponents` list copied from a GET_REQUEST_FILTER_CONTEXT `selectableColumns` entry.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path of the target conditional filter's `filter` (the `sortConfigsSchemaPath` from GET_REQUEST_FILTER_CONTEXT).
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>` — Schema path of the target conditional filter's `filter` (the `sortConfigsSchemaPath` from GET_REQUEST_FILTER_CONTEXT).
 - `sort`: `enum(descending|ascending)` — Sort direction; defaults to ascending.
 
 ### `UPDATE_REQUEST_SORT_CONFIG`
@@ -273,12 +277,12 @@ Add a sort rule to a conditional filter. Target the filter's sortConfigsSchemaPa
 Change a sort rule's column and/or direction by its index within the filter's sortConfigs.
 - `field`: `array<{arguments?: map<string, object>, componentMRef?: string, displayName?: string, isArrayElementMapping?: boolean, isArrayType: boolean, itemType?: string, name: string, tpaResultSource?: enum(2xx|4xx|5xx), type?: string}>` — New sort column path components; unchanged when omitted.
 - `index` *(required)*: `integer` — Index of the sort config to update within the filter's `sortConfigs`.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>`
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 - `sort`: `enum(descending|ascending)` — New sort direction; unchanged when omitted.
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
+npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

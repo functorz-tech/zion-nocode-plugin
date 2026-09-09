@@ -84,22 +84,22 @@ The list above is the methods you will reach for, not the whole API. The complet
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
+npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.4 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
-npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.5 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
+npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -191,7 +191,7 @@ narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FI
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.4 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.5 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -206,12 +206,16 @@ Get the full structure of one action flow: its input params, output, declared va
 ### `GET_ACTION_FLOW_CONTEXT_INFO`
 
 Return the data and variables in scope at a node's schema path — what a binding at that path may reference (upstream node outputs, flow inputs, variables). Pass the node's schemaPath from GET_ACTION_FLOW_DETAIL's nodeSchemaPaths verbatim; do not hand-build the path.
-- `schemaPath` *(required)*: `array<{index?: integer, key?: string}>` — Schema path addressing the target element, taken from a read tool's output (e.g. a conditionSchemaPath / checkSchemaPath from GET_ROLE_DETAIL, node and binding paths from the entity detail tools); never hand-built.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `ADD_ACTION_FLOWS`
 
 Create one or more action flows. Each is seeded empty (FLOW_START connected straight to FLOW_END); add nodes afterwards with ADD_ACTION_FLOW_NODE. Leave `groupId` unset unless the flow belongs in a specific group — naming one also edits the group configuration, so GET_ACTION_FLOW_GROUPS has to be read first.
 - `items` *(required)*: `array<{displayName: string, groupId?: string, isAsync?: boolean, timeout?: integer}>` — Action flows to create. Each is seeded with an empty body (a FLOW_START connected directly to a FLOW_END); add nodes afterwards with ADD_ACTION_FLOW_NODE.
+  - `items[].displayName` — Display name of the new action flow.
+  - `items[].groupId` — Target group id, as the action-flow group listing reports it; omit to leave the flow in the default ungrouped section.
+  - `items[].isAsync` — Whether the flow runs asynchronously (fire-and-forget). Defaults to synchronous.
+  - `items[].timeout` — Optional execution timeout in seconds.
 
 ### `UPDATE_ACTION_FLOW`
 
@@ -232,12 +236,19 @@ Delete action flows by id.
 Declare one or more typed input params on an action flow. Each param's type must be a value copied from GET_ACTION_FLOW_SELECTABLE_TYPES.
 - `actionFlowId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, name: string, type?: string}>`
+  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+  - `items[].name` — Parameter name — also the key callers bind values to. Must be unique within the flow.
+  - `items[].type` — The parameter's type. Copy a `typeIdentifier` returned by GET_ACTION_FLOW_SELECTABLE_TYPES verbatim — never hand-build the string. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Defaults to an optional string when omitted.
 
 ### `UPDATE_ACTION_FLOW_INPUT_PARAMS`
 
 Update existing action-flow input params (rename, retype, or change required).
 - `actionFlowId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, name: string, newName?: string, type?: string}>`
+  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not. Send it together with the type it wraps — a level on its own would change nothing, so it is rejected rather than ignored.
+  - `items[].name` — Current parameter name (key).
+  - `items[].newName` — New name to rename the parameter to.
+  - `items[].type` — New type. Copy a `typeIdentifier` from GET_ACTION_FLOW_SELECTABLE_TYPES verbatim (never hand-build the string); null leaves it unchanged. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled.
 
 ### `DELETE_ACTION_FLOW_INPUT_PARAMS`
 
@@ -252,12 +263,39 @@ Insert a node immediately after an existing node (afterNodeId). Read node ids fr
 - `afterNodeId` *(required)*: `string` — Insert the new node immediately after this node (its uniqueId).
 - `displayName`: `string` — Optional display name; defaults to the localized node-type name.
 - `node` *(required)*: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | BRANCH_SEPARATION → {branchNames?: array<string>} | BREAK → {} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | FLOW_END → {} | FOR_EACH_START → {} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {tableDisplayName?: string} | QUERY_RECORD → {limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId: string} | THIRD_PARTY_API → {thirdPartyApiId?: string} | UPDATE_GLOBAL_VARIABLES → {} | WHILE_START → {}`
+  - `node.configId` *(when `type=AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE`)* — The ZAI config id this node uses; configure later when omitted. For AI_CREATE_CONVERSATION the config's declared inputs are seeded into inputArgs as empty bindings.
+  - `node.taskId` *(when `type=AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE`)* — The ZAI task id (for AI_CREATE_CONVERSATION / AI_SEND_MESSAGE).
+  - `node.branchNames` *(when `type=BRANCH_SEPARATION`)* — Display names of the initial branches; two empty branches are created when omitted.
+  - `node.targetActionFlowId` *(when `type=ACTION_FLOW`)* — uniqueId of the action flow to call; left empty when omitted (select it later). The target flow's declared input args are seeded into inputArgs as empty bindings; fill them with the CREATE_*_BINDING tools.
+  - `node.code` *(when `type=CUSTOM_CODE`)* — Initial JavaScript code; defaults to empty.
+  - `node.tableDisplayName` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD`)* — Display name of the target table; defaults to the first table when omitted. The table's editable columns are seeded into the mutation's data object as empty bindings.
+  - `node.tableDisplayName` *(when `type=QUERY_RECORD`)* — Display name of the table to query; defaults to the first table when omitted.
+  - `node.limit` *(when `type=QUERY_RECORD`)* — Row limit, between 1 and 1000; defaults to 1. With a limit of 1 the node returns the table type; with a limit greater than 1 it returns a list of that table type.
+  - `node.roleUuid` *(when `type=ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT`)* — uuid of the role to add/remove; select it later when omitted.
+  - `node.templateCodeId` *(when `type=TEMPLATE_CODE`)* — The uniqueId of the template code to run (provided by the caller). The template's declared inputs are seeded into inputArgsDataBinding (each input's default value, or an empty type-seeded binding); fill them with the CREATE_*_BINDING tools.
+  - `node.thirdPartyApiId` *(when `type=THIRD_PARTY_API`)* — uniqueId of the third-party API to call; left empty when omitted (select it later). When provided, the request id is generated and the API's declared inputs are seeded into inputs as empty bindings; fill them with the CREATE_*_BINDING tools. (Inputs are only seeded under the refactored type system.)
 
 ### `UPDATE_ACTION_FLOW_NODE`
 
 Edit a node's display name or type-specific scalar config (e.g. queried table, row limit, target flow). Data-binding config — values, conditions, data sources, mutation fields — is edited with the bindings plugin, not here.
 - `actionFlowId` *(required)*: `string`
 - `config`: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {clearOnConflict?: boolean, onConflict?: {actionType?: enum(none|update), constraintName?: string}, tableDisplayName?: string} | QUERY_RECORD → {clearLimit?: boolean, limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId?: string} | THIRD_PARTY_API → {operation?: string, thirdPartyApiId?: string}` — Node-type-specific scalar config to update. Its `type` must match the node's actual type; fields left null are unchanged. Only non-data-binding scalars are editable here — data-binding config (mutation set values, conditions, dataSource, input args, target account, AI message) is edited with the CREATE_*_BINDING tools at the node's schema path, and a query/mutation's conditions/sort live in its `filters` — edit them via GET_REQUEST_FILTER_CONTEXT and the *_REQUEST_* tools at the node's schema path.
+  - `config.configId` *(when `type=AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE`)* — The ZAI config id this node uses; switching it re-seeds AI_CREATE_CONVERSATION's inputArgs from the new config's declared inputs.
+  - `config.taskId` *(when `type=AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE`)* — The ZAI task id (only AI_CREATE_CONVERSATION / AI_SEND_MESSAGE).
+  - `config.targetActionFlowId` *(when `type=ACTION_FLOW`)* — uniqueId of the action flow to call; switching it re-seeds inputArgs from the new flow's declared input args.
+  - `config.code` *(when `type=CUSTOM_CODE`)* — New JavaScript code.
+  - `config.clearOnConflict` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD`)* — Set true to drop conflict handling entirely, so a conflicting insert fails. Only INSERT_RECORD accepts it, and not together with [onConflict].
+  - `config.onConflict` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD`)* — Conflict handling for an INSERT_RECORD node: what happens when the inserted row violates a unique constraint. Only INSERT_RECORD accepts it; omitted fields keep their current value, but the node must end up with a constraint to detect the conflict on.
+  - `config.onConflict.actionType` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD`)* — What to do with a conflicting row: 'none' skips it, 'update' overwrites the existing row with the inserted values. Defaults to 'none'.
+  - `config.onConflict.constraintName` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD`)* — Name of the unique constraint whose violation counts as a conflict, from GET_TABLES_INFO's `constraints` (each entry lists the columns it covers). Omit to keep the current target and only change [actionType].
+  - `config.tableDisplayName` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD`)* — New target table (display name); resets the mutation's filters and conflict handling, and re-seeds its data object from the new table's editable columns.
+  - `config.tableDisplayName` *(when `type=QUERY_RECORD`)* — New table to query (display name); resets the query's filters.
+  - `config.clearLimit` *(when `type=QUERY_RECORD`)* — Set true to drop the row limit, so the query returns every matching row. Data bindings may then only reference the node's aggregate data. Not accepted together with [limit].
+  - `config.limit` *(when `type=QUERY_RECORD`)* — New row limit, between 1 and 1000. With a limit of 1 the node returns the table type; with a limit greater than 1 it returns a list of that table type.
+  - `config.roleUuid` *(when `type=ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT`)* — uuid of the role to add/remove.
+  - `config.templateCodeId` *(when `type=TEMPLATE_CODE`)* — New template code uniqueId to run (provided by the caller).
+  - `config.operation` *(when `type=THIRD_PARTY_API`)* — Request operation, e.g. 'query' or 'mutation'.
+  - `config.thirdPartyApiId` *(when `type=THIRD_PARTY_API`)* — uniqueId of the third-party API to call. Changing it regenerates the request id and drops the previously bound inputs (they referenced the old API's parameters), re-seeding them from the new API's declared inputs as empty bindings; fill them with the CREATE_*_BINDING tools.
 - `displayName`: `string` — New display name; applies to any node type.
 - `nodeId` *(required)*: `string` — The uniqueId of the node to update.
 
@@ -286,12 +324,18 @@ Add a branch to a Condition node's branch separation (branchSeparationId from GE
 Declare flow-level variables (accessible by all nodes, assigned via a Set Variable node). Each type is copied from GET_ACTION_FLOW_SELECTABLE_TYPES.
 - `actionFlowId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, displayName: string, type?: string}>`
+  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+  - `items[].displayName` — Human-readable name of the global variable.
+  - `items[].type` — The variable's type. Copy a `typeIdentifier` returned by GET_ACTION_FLOW_SELECTABLE_TYPES verbatim — never hand-build the string. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Defaults to an optional string when omitted.
 
 ### `UPDATE_ACTION_FLOW_GLOBAL_VARIABLES`
 
 Rename or retype existing flow-level variables. Read variable keys from GET_ACTION_FLOW_DETAIL.
 - `actionFlowId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, displayName?: string, type?: string, variableKey: string}>`
+  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not. Send it together with the type it wraps — a level on its own would change nothing, so it is rejected rather than ignored.
+  - `items[].type` — New type. Copy a `typeIdentifier` from GET_ACTION_FLOW_SELECTABLE_TYPES verbatim (never hand-build the string); null leaves it unchanged. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled.
+  - `items[].variableKey` — The map key (id) of the global variable to update — read it from GET_ACTION_FLOW_DETAIL.
 
 ### `DELETE_ACTION_FLOW_GLOBAL_VARIABLES`
 
@@ -310,18 +354,18 @@ Add assignment targets (flow-variable keys) to a Set Variable node; bind each va
 
 Add a named input slot (referenced as args.<name>) to a Run Code node; bind its value with the bindings plugin. Generate the code body with CREATE_CONST_BINDING.
 - `actionFlowId` *(required)*: `string`
-- `arrayLevel`: `integer` — Array nesting level for [type]; 1 = list, 2 = list of lists. Omit for a scalar.
+- `arrayLevel`: `integer` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
 - `name` *(required)*: `string` — Name (key) of the new input; must be unique within the node.
 - `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
-- `type`: `string` — The input's type. Copy a `typeIdentifier` returned by GET_ACTION_FLOW_SELECTABLE_TYPES with slot=CUSTOM_CODE_INPUT verbatim — never hand-build the string. Defaults to string when omitted. Only projects on the refactored type system carry a per-input type.
+- `type`: `string` — The input's type. Copy a `typeIdentifier` returned by GET_ACTION_FLOW_SELECTABLE_TYPES with slot=CUSTOM_CODE_INPUT verbatim — never hand-build the string. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Defaults to an optional string when omitted. Only projects on the refactored type system carry a per-input type.
 
 ### `SET_CUSTOM_CODE_NODE_OUTPUT_TYPE`
 
 Set a Run Code node's single output type so downstream nodes can bind to its result (the value the code passes to context.setResult). type is a value copied verbatim from GET_ACTION_FLOW_SELECTABLE_TYPES; arrayLevel wraps it in a list (1) or list-of-lists (2), omit for a scalar.
 - `actionFlowId` *(required)*: `string`
-- `arrayLevel`: `integer` — Array nesting level for [type] (1 = list, 2 = list of lists); omit/0 for a scalar.
+- `arrayLevel`: `integer` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
 - `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
-- `type` *(required)*: `string` — Output type: a TypeIdentifier selected from GET_ACTION_FLOW_SELECTABLE_TYPES (pass its `typeIdentifier` verbatim — never hand-build it).
+- `type` *(required)*: `string` — Output type: a TypeIdentifier selected from GET_ACTION_FLOW_SELECTABLE_TYPES (pass its `typeIdentifier` verbatim — never hand-build it). A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled.
 
 ### `CLEAR_CUSTOM_CODE_NODE_OUTPUT_TYPE`
 
@@ -338,6 +382,11 @@ Get one database-change trigger's full configuration by id.
 
 Create database-change triggers. Each fires a flow (actionFlowId from GET_ALL_ACTION_FLOWS_INFO) when a row in a table (tableDisplayName from the database plugin's GET_ALL_TABLE_DISPLAY_NAMES) is inserted / updated / deleted (dbOperationType, defaults to INSERT).
 - `items` *(required)*: `array<{actionFlowId: string, dbOperationType?: enum(INSERT|UPDATE|INSERT_OR_UPDATE|DELETE), displayName?: string, enabled?: boolean, tableDisplayName: string}>` — Database triggers to create. Each fires its action flow on the chosen table operation, with the flow's input args seeded as empty bindings (fill them via the CREATE_*_BINDING tools at the schema paths from GET_DB_TRIGGER_DETAIL) and an always-true firing condition (edit it via the condition tools at the condition schema path from GET_DB_TRIGGER_DETAIL).
+  - `items[].actionFlowId` — The id of the action flow this trigger fires (from GET_ALL_ACTION_FLOWS_INFO).
+  - `items[].dbOperationType` — Which database operation fires the trigger: INSERT, UPDATE, DELETE or INSERT_OR_UPDATE. Defaults to INSERT.
+  - `items[].displayName` — Display name of the trigger; defaults to 'Database-<id>' when omitted.
+  - `items[].enabled` — Whether the trigger is enabled. Defaults to true.
+  - `items[].tableDisplayName` — Display name of the table the trigger watches (from GET_ALL_TABLE_DISPLAY_NAMES).
 
 ### `UPDATE_DB_TRIGGER`
 
@@ -362,6 +411,13 @@ Get one scheduled trigger's full configuration by id.
 
 Create scheduled (cron) triggers. Each fires a flow (actionFlowId from GET_ALL_ACTION_FLOWS_INFO) on a Quartz cron schedule. IMPORTANT: endInstant defaults to the start, so the schedule never fires unless you set endInstant to a future epoch-millisecond timestamp.
 - `items` *(required)*: `array<{actionFlowId: string, cron?: string, cronInputType?: enum(CONFIGURED|CUSTOMIZED), enabled?: boolean, endInstant?: string, name?: string, startInstant?: string}>` — Scheduled triggers to create. Each fires its action flow on a cron schedule, with the flow's input args seeded as empty bindings (fill them via the CREATE_*_BINDING tools at the schema paths from GET_SCHEDULED_TRIGGER_DETAIL).
+  - `items[].actionFlowId` — The id of the action flow this trigger fires (from GET_ALL_ACTION_FLOWS_INFO).
+  - `items[].cron` — Quartz cron expression: 6 space-separated fields — second minute hour day-of-month month day-of-week — e.g. '0 0 0 * * ?' (every day at 00:00:00). Exactly one of day-of-month / day-of-week must be '?'. Defaults to '0 0 0 * * ?' when omitted.
+  - `items[].cronInputType` — Which editor widget the trigger's schedule is edited with — it has no effect on when the trigger fires, only on how the editor renders it. CUSTOMIZED (the default for new triggers) shows the raw cron expression. CONFIGURED shows a structured cycle form (every minute/hour/day/week/month/year plus month/day/weekday and a time picker), which can only represent simple crons — picking it for a cron the form cannot express (step values like '*/15', ranges, multi-value lists) makes the editor display an approximation and silently rewrite the cron once the user touches the form. Setting this never changes the cron itself; pass `cron` to change that.
+  - `items[].enabled` — Whether the trigger is enabled. Defaults to true.
+  - `items[].endInstant` — ISO-8601 date-time with offset after which the schedule stops, e.g. '2026-12-31T23:59:59+08:00'. The editor requires an end, so this defaults to the start instant when omitted — set it to a future time for the schedule to actually fire.
+  - `items[].name` — Display name of the trigger; defaults to 'Scheduled-<id>' when omitted.
+  - `items[].startInstant` — ISO-8601 date-time with offset from which the schedule is active, e.g. '2026-09-01T02:00:00+08:00' or '2026-09-01T02:00:00Z'. Defaults to now when omitted.
 
 ### `UPDATE_SCHEDULED_TRIGGER`
 
@@ -383,8 +439,8 @@ Delete scheduled triggers by id.
 
 Set the flow's single typed output value (refactored type system). Type must be a value copied from GET_ACTION_FLOW_SELECTABLE_TYPES; bind the value afterwards at the output's schema path with the bindings plugin.
 - `actionFlowId` *(required)*: `string`
-- `arrayLevel`: `integer` — Array nesting level for [type]; 1 = list, 2 = list of lists. Omit for a scalar.
-- `type` *(required)*: `string` — Type of the flow's output. Copy a `typeIdentifier` returned by GET_ACTION_FLOW_SELECTABLE_TYPES verbatim — never hand-build the string. The output value is seeded as an empty binding; bind it afterwards with the CREATE_*_BINDING tools at the output's schema path.
+- `arrayLevel`: `integer` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+- `type` *(required)*: `string` — Type of the flow's output. Copy a `typeIdentifier` returned by GET_ACTION_FLOW_SELECTABLE_TYPES verbatim — never hand-build the string. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. The output value is seeded as an empty binding; bind it afterwards with the CREATE_*_BINDING tools at the output's schema path.
 
 ### `CLEAR_ACTION_FLOW_OUTPUT`
 
@@ -394,6 +450,6 @@ Clear the flow's single typed output value.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
+npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

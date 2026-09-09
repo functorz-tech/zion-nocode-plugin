@@ -34,30 +34,30 @@ To onboard an existing API, prefer `tpa import-from-openapi` over hand-building 
 The import tools described above are CLI verbs here — prefer them over hand-building configs:
 
 ```bash
-npx -y zion-mcp@2.7.4 tpa fetch-doc --url "https://api.example.com/docs"          # read a docs page: Markdown content, same-site pageLinks, OpenAPI specLinks; --offset to keep reading
-npx -y zion-mcp@2.7.4 tpa import-from-openapi --url "https://api.example.com/openapi.json" --pathsFilter /users /orders   # spec URL (or --specText '<json|yaml>'); pathsFilter values are space-separated substrings
+npx -y zion-mcp@2.7.5 tpa fetch-doc --url "https://api.example.com/docs"          # read a docs page: Markdown content, same-site pageLinks, OpenAPI specLinks; --offset to keep reading
+npx -y zion-mcp@2.7.5 tpa import-from-openapi --url "https://api.example.com/openapi.json" --pathsFilter /users /orders   # spec URL (or --specText '<json|yaml>'); pathsFilter values are space-separated substrings
 ```
 
 `import-from-openapi` creates each operation as a full TPA endpoint — parameters, body, response trees, paging — in one call (capped at 25; rolled back on failure) and reports the created `tpaConfigId`s. Scope with `--pathsFilter` FIRST (substring match on the spec's path keys) — importing a whole spec creates every endpoint, and pruning afterwards is a separate DELETE. After importing, cross-check the endpoint's parameters against the human docs (specs often lag; add missing ones with the granular ops). `fetch-doc` has a 15-fetch session budget; when no machine-readable spec exists, author the configs from what you read with the granular ops below: `ADD_TPA_CONFIGS` → `ADD_TPA_CONFIG_PARAMETERS` → `ADD_TPA_RESPONSE_DATA` (+ `*_CHILDREN` for nested fields).
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
+npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.4 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
-npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.5 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
+npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -89,7 +89,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 Never write an API key as a parameter `defaultValue` or a literal binding — register it as a project
 secret and bind the auth header to it via the Secret option in the binding selector. See
-`secrets.md` for the ops and for `npx -y zion-mcp@2.7.4 secret save-value`, which collects the plaintext from the
+`secrets.md` for the ops and for `npx -y zion-mcp@2.7.5 secret save-value`, which collects the plaintext from the
 user in the editor so it never enters the schema or this conversation.
 
 A TPA config is an external HTTP/GraphQL integration usable as a project data source. Add the
@@ -105,6 +105,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 Create one or more API endpoints (name, url, HTTP method, query/mutation operation). Each is seeded with empty parameters and response branches; add those afterwards. Returns each created config's tpaConfigId — no need to list configs again to find it.
 - `items` *(required)*: `array<{method: enum(GET|POST|PUT|DELETE), name: string, operation: enum(query|mutation), url: string}>`
+  - `items[].operation` — query → a readable data source; mutation → an action.
 
 ### `UPDATE_TPA_CONFIG`
 
@@ -121,6 +122,8 @@ Update an endpoint's scalar config: name, url, description, method, operation, r
 
 Add request parameters to a config. `items` maps each position (QUERY/PATH/HEADER/BODY) to exactly ONE parameter object — to add several parameters, call this tool once per parameter. Each carries a TPA data type; for OBJECT/ARRAY add the shape with ADD_TPA_PARAMETER_CHILDREN.
 - `items` *(required)*: `map<enum(BODY|HEADER|QUERY|PATH), {defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}>` — New request parameters keyed by their position: BODY, HEADER, QUERY or PATH. OBJECT (or array-of-OBJECT) parameters start empty — add their fields with ADD_TPA_PARAMETER_CHILDREN.
+  - `items{}.itemType` — The array element type; required when [type] is ARRAY (same options except ARRAY itself).
+  - `items{}.type` — Data type: TEXT, FLOAT8, INTEGER, BIGINT, DECIMAL, BOOLEAN, OBJECT, ARRAY or IMAGE.
 - `tpaConfigId` *(required)*: `string`
 
 ### `UPDATE_TPA_CONFIG_PARAMETER`
@@ -139,6 +142,8 @@ Update a top-level request parameter (name, type, itemType, required, default va
 Set the root response-data shape for one response branch (SUCCESS / PERMANENT_FAIL / TEMPORARY_FAIL). Add nested fields afterwards with ADD_TPA_RESPONSE_DATA_CHILDREN.
 - `responseBranch` *(required)*: `enum(2xx|4xx|5xx)`
 - `responseData` *(required)*: `{defaultValue?: string, itemType?: string, name: string, required: boolean, type: string}` — The response body's root node; an OBJECT root gets its fields via ADD_TPA_RESPONSE_DATA_CHILDREN.
+  - `responseData.itemType` — The array element type; required when [type] is ARRAY (same options except ARRAY itself).
+  - `responseData.type` — Data type: TEXT, FLOAT8, INTEGER, BIGINT, DECIMAL, BOOLEAN, OBJECT, ARRAY or IMAGE.
 - `tpaConfigId` *(required)*: `string`
 
 ### `UPDATE_TPA_RESPONSE_DATA`
@@ -163,6 +168,6 @@ Configure (or clear) pagination for a list endpoint.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
+npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

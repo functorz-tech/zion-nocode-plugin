@@ -67,22 +67,22 @@ type is a basic scalar, a nested object, or an array of those. Switching back to
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
+npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.4 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
-npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.5 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
+npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -92,7 +92,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Intent | `name` | Required `args` |
 |---|---|---|
 | List agents | `GET_ALL_ZAI_CONFIGS_INFO` | — |
-| Agent detail (ids/paths) | `GET_ZAI_CONFIG_DETAIL` | `configId` |
+| Agent detail (ids/paths) | `GET_ZAI_CONFIG_DETAIL` | `configId` or `schemaPath` |
 | Selectable I/O types | `GET_ZAI_CONFIG_SELECTABLE_TYPES` | `slot` |
 | Create agents | `ADD_ZAI_CONFIGS` | `items` |
 | Update an agent | `UPDATE_ZAI_CONFIG` | `configId` |
@@ -118,7 +118,7 @@ Run AI node (`actionflow.md`) that references the config by id.
 **Choosing a model (no editor needed):** set it with `UPDATE_ZAI_CONFIG`'s `customModelIdentifier` ({id, namespace}). Discover valid ids + features (vision / file support) from the backend descriptor:
 
 ```bash
-npx -y zion-mcp@2.7.4 platform graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
+npx -y zion-mcp@2.7.5 platform graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
 ```
 Copy an `id` (with its `namespace`) back verbatim — never fabricate one — then verify with `GET_ZAI_CONFIG_DETAIL`.
 
@@ -130,6 +130,8 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 Create one or more AI agents. Each is seeded with default empty system + user prompts, no input args, and plain-text output; edit prompt text afterwards with the bindings plugin at the schema paths from GET_ZAI_CONFIG_DETAIL.
 - `items` *(required)*: `array<{customModelIdentifier: {id: string, namespace?: string}, name?: string}>` — AI agents to create. Each is seeded with the default system + user prompt components (empty text bindings, edit them via the CREATE_*_BINDING tools at the schema paths from GET_ZAI_CONFIG_DETAIL), an empty input-arg set and a plain-text output config. Adding the first agent also provisions the AI conversation tables/relations/permissions if absent.
+  - `items[].customModelIdentifier` — Required model for this agent: the full model identifier ({ id, namespace }) returned by GET_ZAI_MODEL_OPTIONS. Pass a selectable option verbatim; never hand-build it.
+  - `items[].name` — Display name of the new AI agent; defaults to 'Agent<n>' when omitted.
 
 ### `UPDATE_ZAI_CONFIG`
 
@@ -148,6 +150,9 @@ Update an agent's scalar config: name, description, temperature, maxRound, or mo
 Add typed input arguments using exact legacy tokens copied from GET_ZAI_CONFIG_SELECTABLE_TYPES. Inputs are scalar except that image may use arrayLevel: 1 for a list of images; tables, objects, enums, and other arrays are unavailable.
 - `configId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, displayName: string, type?: string}>`
+  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+  - `items[].displayName` — Human-readable name of the input argument.
+  - `items[].type` — The argument's type. Copy a `typeIdentifier` returned by GET_ZAI_CONFIG_SELECTABLE_TYPES verbatim — never hand-build the string. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Defaults to an optional string when omitted.
 
 ### `UPDATE_ZAI_CONFIG_OUTPUT_MODE`
 
@@ -162,6 +167,11 @@ Legacy type system only. Switch the agent between plain-text and structured outp
 Legacy type system only. Add fields to the structured-output object, addressed by a fieldPath (nested objects are split into referenced custom types automatically). Switch to structured output first with UPDATE_ZAI_CONFIG_OUTPUT_MODE.
 - `configId` *(required)*: `string`
 - `items` *(required)*: `array<{description?: string, itemType?: enum(STRING|NUMBER|DECIMAL|INTEGER|BOOLEAN|TIMESTAMPTZ|TIME|DATE|GEO_POINT|JSONB|… 13 total), name: string, required?: boolean, type: enum(STRING|NUMBER|DECIMAL|INTEGER|BOOLEAN|TIMESTAMPTZ|TIME|DATE|GEO_POINT|JSONB|… 13 total)}>`
+  - `items[].description` — Natural-language description of the field, shown to the model.
+  - `items[].itemType` — The array element type; required when [type] is ARRAY (same options except ARRAY itself).
+  - `items[].name` — Field name: a bare identifier (letters, digits, underscores; no leading digit), unique among its siblings.
+  - `items[].required` — Whether the field is required. Defaults to false.
+  - `items[].type` — Field type: STRING, NUMBER, DECIMAL, INTEGER, BOOLEAN, TIMESTAMPTZ, TIME, DATE, OBJECT or ARRAY. An OBJECT field starts empty — fill it with a follow-up call addressing it via parentFieldPath.
 - `parentFieldPath`: `array<string>` — Field names of the OBJECT-typed (or array-of-object) ancestors to add under, from the output root down (e.g. ["order", "items"] adds inside the `items` object). Omit to add at the root.
 
 ### `UPDATE_ZAI_CONFIG_OUTPUT_FIELD`
@@ -191,12 +201,16 @@ Legacy type system only. Update a TPA context's field selection.
 Legacy type system only. Edit the field-level descriptions (nested description tree) the model sees for a callable tool's inputs.
 - `configId` *(required)*: `string`
 - `inputFieldDescriptions`: `array<{description: string, fieldPath: array<string>}>` — Per-input-field descriptions to merge into the tool's input description tree.
+  - `inputFieldDescriptions[].description` — The description shown to the model; an empty string removes the entry.
+  - `inputFieldDescriptions[].fieldPath` — Field names from the tool's input/output root down to the described field.
 - `outputFieldDescriptions`: `array<{description: string, fieldPath: array<string>}>` — Per-output-field descriptions to merge into the tool's output description tree.
+  - `outputFieldDescriptions[].description` — The description shown to the model; an empty string removes the entry.
+  - `outputFieldDescriptions[].fieldPath` — Field names from the tool's input/output root down to the described field.
 - `toolId` *(required)*: `string` — The toolId of the tool whose field descriptions to edit.
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
+npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

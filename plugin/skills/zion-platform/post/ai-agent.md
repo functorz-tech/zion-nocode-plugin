@@ -51,22 +51,22 @@ External-API context here is workspace HTTP APIs: `ADD_ZAI_CONFIG_API_CONTEXTS` 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.4 login
+npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.4 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.4 projects search):
-npx -y zion-mcp@2.7.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.5 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
+npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -76,7 +76,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Intent | `name` | Required `args` |
 |---|---|---|
 | List agents | `GET_ALL_ZAI_CONFIGS_INFO` | — |
-| Agent detail (ids/paths) | `GET_ZAI_CONFIG_DETAIL` | `configId` |
+| Agent detail (ids/paths) | `GET_ZAI_CONFIG_DETAIL` | `configId` or `schemaPath` |
 | Selectable I/O types | `GET_ZAI_CONFIG_SELECTABLE_TYPES` | `slot` |
 | Create agents | `ADD_ZAI_CONFIGS` | `items` |
 | Update an agent | `UPDATE_ZAI_CONFIG` | `configId` |
@@ -96,7 +96,7 @@ Run AI node (`actionflow.md`) that references the config by id.
 **Choosing a model (no editor needed):** set it with `UPDATE_ZAI_CONFIG`'s `customModelIdentifier` ({id, namespace}). Discover valid ids + features (vision / file support) from the backend descriptor:
 
 ```bash
-npx -y zion-mcp@2.7.4 platform graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
+npx -y zion-mcp@2.7.5 platform graphql --query '{ supportedCustomModelDescriptor { chatModelDescriptors } }'
 ```
 Copy an `id` (with its `namespace`) back verbatim — never fabricate one — then verify with `GET_ZAI_CONFIG_DETAIL`.
 
@@ -108,6 +108,8 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 
 Create one or more AI agents. Each is seeded with default empty system + user prompts, no input args, and plain-text output; edit prompt text afterwards with the bindings plugin at the schema paths from GET_ZAI_CONFIG_DETAIL.
 - `items` *(required)*: `array<{customModelIdentifier: {id: string, namespace?: string}, name?: string}>` — AI agents to create. Each is seeded with the default system + user prompt components (empty text bindings, edit them via the CREATE_*_BINDING tools at the schema paths from GET_ZAI_CONFIG_DETAIL), an empty input-arg set and a plain-text output config. Adding the first agent also provisions the AI conversation tables/relations/permissions if absent.
+  - `items[].customModelIdentifier` — Required model for this agent: the full model identifier ({ id, namespace }) returned by GET_ZAI_MODEL_OPTIONS. Pass a selectable option verbatim; never hand-build it.
+  - `items[].name` — Display name of the new AI agent; defaults to 'Agent<n>' when omitted.
 
 ### `UPDATE_ZAI_CONFIG`
 
@@ -126,21 +128,24 @@ Update an agent's scalar config: name, description, temperature, maxRound, or mo
 Add typed input arguments. Copy each base typeIdentifier from GET_ZAI_CONFIG_SELECTABLE_TYPES and use arrayLevel when a list or nested list is required.
 - `configId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, displayName: string, type?: string}>`
+  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
+  - `items[].displayName` — Human-readable name of the input argument.
+  - `items[].type` — The argument's type. Copy a `typeIdentifier` returned by GET_ZAI_CONFIG_SELECTABLE_TYPES verbatim — never hand-build the string. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Defaults to an optional string when omitted.
 
 ### `UPDATE_ZAI_CONFIG_OUTPUT`
 
 Configure the agent's output: plain streamed text (isStructured=false) or a structured typed object (isStructured=true with an outputType copied from GET_ZAI_CONFIG_SELECTABLE_TYPES).
-- `arrayLevel`: `integer` — Array nesting level for [outputType]; 1 = list, 2 = list of lists. Ignored when [outputType] is null.
+- `arrayLevel`: `integer` — An agent returns one structured value, so this slot takes no list and the only accepted value is 0. It is kept, and a level above 0 rejected, so a caller still holding an older tool schema is told what happened instead of quietly getting a scalar.
 - `configId` *(required)*: `string` — The id of the AI agent whose output config to update.
 - `isStreaming`: `boolean` — Whether the plain-text output streams. Only meaningful when not structured.
 - `isStructured`: `boolean` — Whether the agent emits a structured (typed) output (true) or plain text (false). Switching to structured seeds `outputType` to string when none is given; switching to plain text drops the output type.
 - `maxTokenSize`: `integer` — Max output token size.
 - `outputDescriptionConfig`: `{description?: string, fieldDescriptionByType?: map<string, object>}` — Field-description config for the output: a `description` plus `fieldDescriptionByType` (per-type field descriptions). Replaces the whole description config when provided.
-- `outputType`: `string` — The structured output's type (refactored type system). Copy a `typeIdentifier` returned by GET_ZAI_CONFIG_SELECTABLE_TYPES verbatim — never hand-build the string. Only meaningful when the output is structured.
+- `outputType`: `string` — The structured output's type (refactored type system). Copy a `typeIdentifier` returned by GET_ZAI_CONFIG_SELECTABLE_TYPES verbatim — never hand-build the string. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Only meaningful when the output is structured.
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.4 schema validate && npx -y zion-mcp@2.7.4 project sync-backend
+npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

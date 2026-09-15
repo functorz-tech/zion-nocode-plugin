@@ -78,16 +78,7 @@ Lists render one row per record from their data source. Children inside a list b
 
 ## 4. Visual Layout & Positioning Engine
 
-Zion's canvas operates as a visual CSS rendering engine.
-
-### 4.1 Positioning Methods
-* **Relative (Default)**: Components follow the natural page layout flow, stacking rows/columns according to parent Flexbox rules. Moving a sibling pushes surrounding elements.
-* **Absolute**: Removed from the natural document flow. Positioned relative to the boundaries of its **immediate parent** container, ignoring other siblings.
-* **Fixed**: Locked to the viewport (browser window). Stays static even when scrolling.
-
-### 4.2 Views & Conditional Views
-* **Container (View)**: Wraps child elements, serving as a Flexbox box (Horizontal/Vertical arrangement).
-* **Conditional View**: Act as a logical switch statement. Contains multiple distinct child canvases (Cases). At runtime, only the single canvas corresponding to the true evaluation condition is rendered in the DOM, keeping the page clean and secure.
+Zion's canvas operates as a visual CSS rendering engine: components are nested Flexbox containers obeying the CSS box model, laid out in the natural document flow unless deliberately taken out of it. The component plugin's own guidance is authoritative for positioning, container sizing, breakpoints, and when a conditional container is the right structure rather than a conditional value or a conditional action — consult it there rather than deciding any of that from this overview.
 
 ---
 
@@ -98,16 +89,7 @@ Lightweight operations executing directly in the client browser/app. Triggered b
 
 **Prefer direct frontend CRUD**: The frontend can insert/update/delete rows directly for simple single-table CRUD when table, column, and row permissions fully express the authorization policy. Do not create an Actionflow merely to proxy CRUD. Reserve Backend Actionflows for genuinely server-side, multi-step, transactional, or orchestrated operations: cross-table atomicity, trusted calculations or secrets, branching or loops, third-party calls, schedules, webhooks, and database triggers. If data permissions cannot express the authorization rule, enforce it server-side in an Actionflow — see §6.
 
-**Other typical frontend actions**:
-* Navigation: push page, redirect, back, new tab, external link.
-* Feedback: show/hide Toast, Modal, loading overlay.
-* Local state: set Page Variable or Global Variable.
-* Data refresh: Refresh (reload a remote data source), List Control (scroll-to / load-more).
-* File operations: upload (opens picker), download, clipboard copy, QR scan.
-* AI agent invocation: "Run AI" triggers a ZAI agent — returns streamed text or structured JSON; multi-turn via sessionId.
-* Trigger Actionflow: "Request – Actionflow" calls a backend flow with input params and receives its outputs; use this for server-only trust, cross-table ACID, or multi-step orchestration.
-* Auth: Login, Logout, SSO Login.
-* Payment: WeChat Pay / Alipay.
+**The authoritative list of what a frontend action can do** is the component plugin's selectable-actions read plus that tool's parameter schema — they are filtered to this project and platform and they are complete. The editor offers navigation, toasts and dialogs, local and global state writes, data refresh and list control, file upload / download / clipboard / QR, AI agent invocation, authentication, payments, animation, and platform-specific capabilities. Do not tell a user an interaction is impossible, or reach for an Actionflow to get it, before checking there.
 
 ### 5.2 Backend Actionflows
 Server-side visual execution graphs used to perform robust operations. They are triggered by:

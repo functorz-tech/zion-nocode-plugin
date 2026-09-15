@@ -18,26 +18,26 @@ A media field, or an object field carried as a JSON string, cannot travel over H
 ### Types
 Every `type` argument here is picked, not written: call `GET_API_SELECTABLE_TYPES` for the slot being filled and copy a returned `typeIdentifier` verbatim. A private object type belongs to the one feature that owns it and is never offered to another, so to reuse a shape some other feature owns, publish it with `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` and select the public copy. This API's own JSON body type is the exception — it is already this API's, so describe it in place with `ADD_TYPE_DEFINITION_FIELDS`. Lists are not enumerated — the nesting has no end — so a list response or input variable is a returned identifier plus `arrayLevel: 1`; the URL, header and form-body parameters hold one value, take no `arrayLevel`, and accept no list at all.
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates every op below on pre-refactor projects, where the API-integration workspace feature does not exist. On a pre-refactor project integrate external HTTP endpoints as TPA configs (`third-party-api.md`) instead. Check `npx -y zion-mcp@2.7.5 schema load` → `typeSystem` first.
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates every op below on pre-refactor projects, where the API-integration workspace feature does not exist. On a pre-refactor project integrate external HTTP endpoints as TPA configs (`third-party-api.md`) instead. Check `npx -y zion-mcp@2.7.6 schema load` → `typeSystem` first.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.6 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
+npx -y zion-mcp@2.7.6 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.6 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.5 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
-npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.6 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.6 projects search):
+npx -y zion-mcp@2.7.6 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.6 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.6 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -164,6 +164,6 @@ Declare input variables on an API — the values a caller supplies, bindable int
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
+npx -y zion-mcp@2.7.6 schema validate && npx -y zion-mcp@2.7.6 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

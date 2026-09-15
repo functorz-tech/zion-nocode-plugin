@@ -42,26 +42,26 @@ A public type is an entry in the project's shared object type list. A private on
 
 Either way the copy is a NEW type with a new id, and nothing points at it yet: the feature keeps using the old type until you set that slot's type to the `typeIdentifier` the result echoes.
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.7.5 schema status` → `typeSystem`.
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.7.6 schema status` → `typeSystem`.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.6 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
+npx -y zion-mcp@2.7.6 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.6 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.5 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
-npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.6 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.6 projects search):
+npx -y zion-mcp@2.7.6 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.6 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.6 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -103,7 +103,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 ## Worked example: an OrderStatus enum
 
 ```bash
-npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.6 schema tool-call --toolCalls '[
   {"name":"ADD_ENUM_DEFINITIONS","args":{"enums":[
     {"name":"OrderStatus","displayName":"OrderStatus","options":[
       {"value":"PENDING","displayName":"PENDING"},
@@ -164,6 +164,6 @@ Add fields to an existing object type.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
+npx -y zion-mcp@2.7.6 schema validate && npx -y zion-mcp@2.7.6 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

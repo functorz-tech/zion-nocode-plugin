@@ -46,7 +46,7 @@ Every table has non-deletable built-in fields: id (s:p:bigint), created_at (s:p:
 * Protected AI/Session Tables: '会话', '消息', '工具使用记录', '消息内容' (cannot be modified or deleted) The system built-in AI tables are strictly for system AI functions. For user chat systems, always create custom user-defined tables (e.g. 'user_chat', 'chat_message').
 
 ### Required Fields & Default Values
-A field on a table you are creating needs no default value, whatever its 'required' setting: the table is created empty, so a mandatory column has no existing rows to satisfy. A default value is only required where the table already holds rows — adding a 'required' field to a table that was already there, or turning 'required' on for an existing field. Both are rejected without one.
+A field declared inside ADD_TABLES needs no default value, whatever its 'required' setting: the table is created empty, so a mandatory column has no existing rows to satisfy. Everywhere else a 'required' field needs one — ADD_FIELDS_AND_RELATIONS adding it, or UPDATE_FIELDS_AND_RELATIONS turning 'required' on for an existing field — and both are rejected without one. This holds even for a table you created earlier in this conversation: only ADD_TABLES can tell that the table holds no rows, so declare the mandatory fields there.
 Default value formatting:
 - s:p:bigint, s:p:decimal, and s:p:boolean: Use literal values (e.g., 10, true).
 - s:p:timestamptz, s:p:date, and s:p:timetz: Strictly use ISO 8601 strings (e.g., '2025-12-09T16:02:03.000Z', '2025-12-09', '16:02:03+08:00').
@@ -86,22 +86,22 @@ A relation's generated FK carries two names, and which one a call wants depends 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.6 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.5 login
+npx -y zion-mcp@2.7.6 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.6 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.5 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.5 projects search):
-npx -y zion-mcp@2.7.5 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.5 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.6 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.6 projects search):
+npx -y zion-mcp@2.7.6 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.6 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.6 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -134,8 +134,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 Read the field-type picker first, then copy its `typeIdentifier` values verbatim:
 
 ```bash
-npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
-npx -y zion-mcp@2.7.5 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.6 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
+npx -y zion-mcp@2.7.6 schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
     {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
       {"apiName":"title","displayName":"title","typeIdentifier":"s:p:string","required":true,"defaultValue":""},
@@ -156,6 +156,7 @@ Create tables, each with a displayName and its initial fields.
   - `items[].fields[].apiName` — English snake_case
   - `items[].fields[].computed` — Makes this a computed (formula) field: its value comes from a formula instead of being stored. The field is created with an empty formula — configure it afterwards with GET_FORMULA_OPERATORS + CREATE_FORMULA_BINDING at its `formulaSchemaPath`, which ADD_FIELDS_AND_RELATIONS echoes and GET_TABLES_INFO reports. A computed field cannot be required and takes no default value, and its type cannot be an image / video / file / JSON one.
   - `items[].fields[].defaultValue` — Default value, in the field's own type. A scalar for a scalar field: an enum field takes one of its option ids, a JSONB field a valid JSON document, a date field a 'YYYY-MM-DD' string, a time field an 'HH:mm:ssZ' string (e.g. '09:30:00+08:00'), a date-time field an ISO 8601 instant (e.g. '2027-01-31T09:30:00.000Z'). An object for the two types no scalar can carry: a geo-point field takes {"longitude": <-180..180>, "latitude": <-90..90>}, an image / video / file field takes {"exId": "<uploaded resource id>"}. A field of a legacy-type-system project takes no default value at all.
+  - `items[].fields[].required` — Whether a value is mandatory. A mandatory field added to a table that is already there also needs a `defaultValue`: making it mandatory adds a NOT NULL check the rows the table already holds have to satisfy. A field of a table ADD_TABLES is creating in this same call needs none — that table starts empty.
   - `items[].fields[].typeIdentifier` — Required. The field's type, copied verbatim from GET_TABLE_FIELD_SELECTABLE_TYPES — never assemble it by hand. Pass the concrete type; `required` decides whether the stored type is optional.
   - `items[].relations[].relationType` — Enum: ['one_to_one', 'one_to_many']
   - `items[].tableApiName` — English snake_case translation of tableDisplayName, singular for the same reason — "order", not "orders".
@@ -168,6 +169,7 @@ Add fields and relations to one table, addressed by displayName. Each field's `t
   - `fields[].apiName` — English snake_case
   - `fields[].computed` — Makes this a computed (formula) field: its value comes from a formula instead of being stored. The field is created with an empty formula — configure it afterwards with GET_FORMULA_OPERATORS + CREATE_FORMULA_BINDING at its `formulaSchemaPath`, which ADD_FIELDS_AND_RELATIONS echoes and GET_TABLES_INFO reports. A computed field cannot be required and takes no default value, and its type cannot be an image / video / file / JSON one.
   - `fields[].defaultValue` — Default value, in the field's own type. A scalar for a scalar field: an enum field takes one of its option ids, a JSONB field a valid JSON document, a date field a 'YYYY-MM-DD' string, a time field an 'HH:mm:ssZ' string (e.g. '09:30:00+08:00'), a date-time field an ISO 8601 instant (e.g. '2027-01-31T09:30:00.000Z'). An object for the two types no scalar can carry: a geo-point field takes {"longitude": <-180..180>, "latitude": <-90..90>}, an image / video / file field takes {"exId": "<uploaded resource id>"}. A field of a legacy-type-system project takes no default value at all.
+  - `fields[].required` — Whether a value is mandatory. A mandatory field added to a table that is already there also needs a `defaultValue`: making it mandatory adds a NOT NULL check the rows the table already holds have to satisfy. A field of a table ADD_TABLES is creating in this same call needs none — that table starts empty.
   - `fields[].typeIdentifier` — Required. The field's type, copied verbatim from GET_TABLE_FIELD_SELECTABLE_TYPES — never assemble it by hand. Pass the concrete type; `required` decides whether the stored type is optional.
 - `relations`: `array<{fieldApiNameInSourceTable: string, fieldApiNameInTargetTable: string, fieldDisplayNameInSourceTable: string, fieldDisplayNameInTargetTable: string, relationType: string, sourceTableDisplayName: string, targetTableDisplayName: string}>`
   - `relations[].relationType` — Enum: ['one_to_one', 'one_to_many']
@@ -215,7 +217,7 @@ Remove a table's vector-search extension. The generated embedding columns and th
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-backend
+npx -y zion-mcp@2.7.6 schema validate && npx -y zion-mcp@2.7.6 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.
 
@@ -225,7 +227,7 @@ npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-back
 - The picker lists **primitives and enums only**, and returns the *concrete* type: `required` decides nullability, so never pass a `|null` union. A type it did not offer is rejected.
 - **Destructive ops** (`DELETE_TABLES`, `DELETE_FIELDS_AND_RELATIONS`, `DELETE_CONSTRAINTS`) lose data; list what will be deleted and warn the user.
 - **Type changes** aren't editable: delete + recreate the column.
-- If results look stale, run `npx -y zion-mcp@2.7.5 schema reload`.
+- If results look stale, run `npx -y zion-mcp@2.7.6 schema reload`.
 - **Enums / custom types** are out of scope here — see `schema-type.md`.
 
 ## Reading & writing deployed rows (runtime backend)
@@ -233,10 +235,10 @@ npx -y zion-mcp@2.7.5 schema validate && npx -y zion-mcp@2.7.5 project sync-back
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-npx -y zion-mcp@2.7.5 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-npx -y zion-mcp@2.7.5 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-npx -y zion-mcp@2.7.5 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-npx -y zion-mcp@2.7.5 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+npx -y zion-mcp@2.7.6 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.6 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+npx -y zion-mcp@2.7.6 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+npx -y zion-mcp@2.7.6 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
 - `insert` must supply every NOT-NULL column; object keys are the column **apiName** (what the schema read tools report).
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.

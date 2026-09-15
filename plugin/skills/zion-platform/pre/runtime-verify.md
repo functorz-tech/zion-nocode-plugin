@@ -31,7 +31,7 @@ In the schema an enum option has an id and a name, and a binding stores the id. 
 Images, videos and files live in object storage; a table column holds only the asset id, never a URL or a path. That changes every side of a runtime call:
 - **Reading**: the column is an object in GraphQL, not a scalar, so selecting `cover_image` bare fails with "Subselection required for type 'FZ_Image'". Ask for `cover_image_id`, or select a subfield — `cover_image { id url }`. The typed tools do this for you when they default a field list; hand-written `runtime.graphql` selections have to get it right. The list-valued media types are deprecated; if a project still has one, it reads as a `[col]_ids` array.
 - **Writing**: `runtime.insert` and `runtime.update` take the id column too — `{"cover_image_id": 1030…}`, never `{"cover_image": "https://…"}`. A URL in a media column is rejected, and a plausible-looking id you invented points at someone else's asset or at nothing.
-- **Getting an id**: an asset does not exist until its bytes have been uploaded, which is a two-step flow — request a presigned URL (`imagePresignedUrl` / `videoPresignedUrl` / `filePresignedUrl`, keyed by the file's Base64 MD5), then HTTP PUT the bytes to it. You can do the first step through `runtime.graphql` but **not the second**: no runtime tool sends raw bytes. Three ways to get a storable id, in order of preference: `web.import_asset` with `mode: RUNTIME`, which does both steps server-side from a public URL and hands back the numeric id; `runtime.query` on `fz_images` / `fz_videos` / `fz_files`, which lists the ids the app already holds; or asking the user. Never fabricate one — a plausible number points at another project's asset or at nothing, and the row looks written until someone opens it.
+- **Getting an id**: an asset does not exist until its bytes have been uploaded, which is a two-step flow — request a presigned URL (`imagePresignedUrlV2` / `videoPresignedUrlV2` / `filePresignedUrlV2`, keyed by the file's Base64 MD5), then HTTP PUT the bytes to it. You can do the first step through `runtime.graphql` but **not the second**: no runtime tool sends raw bytes. Three ways to get a storable id, in order of preference: `web.import_asset` with `mode: RUNTIME`, which does both steps server-side from a public URL and hands back the numeric id; `runtime.query` on `fz_images` / `fz_videos` / `fz_files`, which lists the ids the app already holds; or asking the user. Never fabricate one — a plausible number points at another project's asset or at nothing, and the row looks written until someone opens it.
 - **Which id, though**: a data row stores the id the RUNNING APP holds, which is what those tables list and what `mode: RUNTIME` returns. Editor-side asset ids are a different space — an id taken from the editor and written into a row, or an app id bound to a component, resolves to nothing and reports no error either way.
 - **Importing at run time is a different problem**: `web.import_asset` runs now, while you are building. An app that has to turn a URL into an asset while it runs needs the **Files** action flow node, which does the same import inside a flow. Build that node into the flow rather than importing the file yourself and writing the id in.
 - `url` is a rendering detail: read it when you want to show or check an asset, and store the id everywhere else.
@@ -62,20 +62,20 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-npx -y zion-mcp@2.7.5 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-npx -y zion-mcp@2.7.5 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.6 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+npx -y zion-mcp@2.7.6 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
 `runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 
 ## How to drive it (CLI)
 
 ```bash
-npx -y zion-mcp@2.7.5 runtime query --tableName order --where '{"status":{"_eq":"PAID"}}' --fields '["id","status","total"]'
-npx -y zion-mcp@2.7.5 runtime insert --tableName order --objects '[{"status":"PAID","total":100}]'
-npx -y zion-mcp@2.7.5 runtime update --tableName order --where '{"id":{"_eq":42}}' --set '{"status":"SHIPPED"}'
-npx -y zion-mcp@2.7.5 runtime delete --tableName order --where '{"id":{"_eq":42}}'
-npx -y zion-mcp@2.7.5 runtime graphql --query 'query { order_aggregate { aggregate { count } } }'
-npx -y zion-mcp@2.7.5 runtime run-code --jsCode 'const total = 2 + 2; total;'
+npx -y zion-mcp@2.7.6 runtime query --tableName order --where '{"status":{"_eq":"PAID"}}' --fields '["id","status","total"]'
+npx -y zion-mcp@2.7.6 runtime insert --tableName order --objects '[{"status":"PAID","total":100}]'
+npx -y zion-mcp@2.7.6 runtime update --tableName order --where '{"id":{"_eq":42}}' --set '{"status":"SHIPPED"}'
+npx -y zion-mcp@2.7.6 runtime delete --tableName order --where '{"id":{"_eq":42}}'
+npx -y zion-mcp@2.7.6 runtime graphql --query 'query { order_aggregate { aggregate { count } } }'
+npx -y zion-mcp@2.7.6 runtime run-code --jsCode 'const total = 2 + 2; total;'
 ```
 
 `runtime run-code` executes the snippet in the app's Run Code sandbox and returns its value, with
@@ -87,13 +87,13 @@ These run against the **deployed** app through the admin channel, which bypasses
 permissions — a row you can read here is not necessarily a row your users can read.
 
 ### Yours alone
-Both you and the in-editor agent can deploy the backend — `npx -y zion-mcp@2.7.5 project sync-backend` here,
+Both you and the in-editor agent can deploy the backend — `npx -y zion-mcp@2.7.6 project sync-backend` here,
 `deploy.sync_backend` there — and either way the loop is the same: edit, deploy, then test what
 you deployed, because a runtime call always hits the DEPLOYED app. These two have no in-editor
 counterpart at all:
 
-- `npx -y zion-mcp@2.7.5 schema validate` — type-check the loaded schema before deploying it.
-- `npx -y zion-mcp@2.7.5 site deploy` — ship a built frontend directory, with `site status` / `site abort` for the run; a PROD target needs a human to approve it.
+- `npx -y zion-mcp@2.7.6 schema validate` — type-check the loaded schema before deploying it.
+- `npx -y zion-mcp@2.7.6 site deploy` — ship a built frontend directory, with `site status` / `site abort` for the run; a PROD target needs a human to approve it.
 
 ### Not available from this CLI
 The verification contract above is written for the in-editor agent, which has tools this CLI does

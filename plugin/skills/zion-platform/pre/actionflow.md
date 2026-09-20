@@ -87,22 +87,22 @@ The list above is the methods you will reach for, not the whole API. The complet
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.7 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.7 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.7 login
+npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.7 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.7 projects search):
-npx -y zion-mcp@2.7.7 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.7 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.8 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
+npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -193,7 +193,7 @@ narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FI
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.7 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.8 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -367,7 +367,7 @@ Add a named output value to a Run Code node (for a node that returns several nam
 - `actionFlowId` *(required)*: `string`
 - `name` *(required)*: `string` — Name (key) of the new output; must be unique within the node.
 - `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
-- `type` *(required)*: `enum(BIGSERIAL|BIGINT|INTEGER|FLOAT8|DECIMAL|TIMESTAMPTZ|TIMETZ|DATE|INTERVAL|TEXT|… 19 total)` — The output's type. Legacy custom-code outputs support only primitive column types: TEXT, BIGINT, DECIMAL, BOOLEAN, DATE, TIMETZ, TIMESTAMPTZ, IMAGE, VIDEO, FILE, GEO_POINT, JSONB (no arrays / tables / custom types).
+- `type` *(required)*: `enum(BIGSERIAL|BIGINT|INTEGER|FLOAT8|DECIMAL|TIMESTAMPTZ|TIMETZ|DATE|INTERVAL|TEXT|… 20 total)` — The output's type. Legacy custom-code outputs support only primitive column types: TEXT, BIGINT, DECIMAL, BOOLEAN, DATE, TIMETZ, TIMESTAMPTZ, IMAGE, VIDEO, FILE, GEO_POINT, JSONB (no arrays / tables / custom types).
 
 ### `UPDATE_CUSTOM_CODE_NODE_OUTPUT_VALUE`
 
@@ -376,7 +376,7 @@ Rename or retype a named output value on a Run Code node.
 - `name` *(required)*: `string` — Current output name.
 - `newName`: `string` — New output name; must be unique within the node. Omit to keep the current name.
 - `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
-- `type`: `enum(BIGSERIAL|BIGINT|INTEGER|FLOAT8|DECIMAL|TIMESTAMPTZ|TIMETZ|DATE|INTERVAL|TEXT|… 19 total)` — New type — a primitive column type, as in ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE. Omit to keep.
+- `type`: `enum(BIGSERIAL|BIGINT|INTEGER|FLOAT8|DECIMAL|TIMESTAMPTZ|TIMETZ|DATE|INTERVAL|TEXT|… 20 total)` — New type — a primitive column type, as in ADD_CUSTOM_CODE_NODE_OUTPUT_VALUE. Omit to keep.
 
 ### `DELETE_CUSTOM_CODE_NODE_OUTPUT_VALUE`
 
@@ -451,7 +451,7 @@ Delete scheduled triggers by id.
 
 Add named output fields to a flow (legacy output model), one entry per field with its own type.
 - `actionFlowId` *(required)*: `string`
-- `items` *(required)*: `array<{name: string, type?: enum(BIGSERIAL|BIGINT|INTEGER|FLOAT8|DECIMAL|TIMESTAMPTZ|TIMETZ|DATE|INTERVAL|TEXT|… 19 total)}>`
+- `items` *(required)*: `array<{name: string, type?: enum(BIGSERIAL|BIGINT|INTEGER|FLOAT8|DECIMAL|TIMESTAMPTZ|TIMETZ|DATE|INTERVAL|TEXT|… 20 total)}>`
   - `items[].name` — Output field key; must be unique within the flow's object output.
   - `items[].type` — The field's type. Legacy object outputs support only primitive column types: TEXT, BIGINT, DECIMAL, BOOLEAN, DATE, TIMETZ, TIMESTAMPTZ, IMAGE, VIDEO, FILE, GEO_POINT, JSONB. Defaults to TEXT.
 
@@ -464,6 +464,6 @@ Remove named output fields from a flow (legacy output model).
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema validate && npx -y zion-mcp@2.7.7 project sync-backend
+npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

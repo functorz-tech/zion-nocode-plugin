@@ -10,7 +10,8 @@ An enum and each of its options carry a permanent id. The platform assigns it �
 - An enum also has a displayName (same rule) and an optional description; options have no description.
 
 Operations:
-- `GET_ALL_ENUM_DEFINITIONS`: list enums with their options. Always call it before editing — edits are rejected until the target enum has been read.
+- `GET_ALL_ENUM_DEFINITIONS`: list enums with their options. Editing an enum requires having read it first — this listing reads every enum at once.
+- `GET_ENUM_DEFINITION_DETAIL`: read one enum by id, each option with the client platforms that accept it. This satisfies that requirement for that enum alone, so an edit to a known enum needs only this call. Check an option's `platforms` before wiring it into an action: an action carrying an option is invalid on a client whose platform is missing from it.
 - `ADD_ENUM_DEFINITIONS`: create enums with their initial options inline.
 - `UPDATE_ENUM_DEFINITIONS`: change an enum's own displayName / description. Omitted fields are unchanged. Its `options` argument REPLACES the whole option list, so use the per-option tools below for single-option edits.
 - `ADD_ENUM_OPTIONS` / `UPDATE_ENUM_OPTIONS` / `DELETE_ENUM_OPTIONS`: append options, rename their labels, or remove them.
@@ -23,7 +24,8 @@ If a column should use a new enum, create the enum here first, in the same turn 
 Custom object types are named, reusable structured types (a set of typed fields), referenced elsewhere by the identifier `u:o:<typeId>` (action-flow inputs/outputs, other types' fields, and other type slots).
 
 Operations:
-- `GET_ALL_OBJECT_DEFINITIONS`: list object types with their fields. Always call it before editing — edits are rejected until the target type has been read.
+- `GET_ALL_OBJECT_DEFINITIONS`: list object types with their fields. Editing a type requires having read it first — this listing reads every type at once.
+- `GET_OBJECT_TYPE_DEFINITION_DETAIL`: read one object type by id, its fields resolved to the same readable type names as the listing. This satisfies that requirement for that type alone, so an edit to a known type needs only this call.
 - `GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES`: the types a field of an object type accepts, with the exact `typeIdentifier` to write.
 - `ADD_OBJECT_TYPE_DEFINITIONS`: create object types, each with a displayName and its initial fields. Ids are assigned by the platform and returned in the result — do not send one.
 - `UPDATE_OBJECT_TYPE_DEFINITIONS`: update a type's own displayName / description / private flag only (omitted fields are unchanged).
@@ -42,26 +44,26 @@ A public type is an entry in the project's shared object type list. A private on
 
 Either way the copy is a NEW type with a new id, and nothing points at it yet: the feature keeps using the old type until you set that slot's type to the `typeIdentifier` the result echoes.
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.7.7 schema status` → `typeSystem`.
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.7.8 schema status` → `typeSystem`.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.7 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.7 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.7 login
+npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.7 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.7 projects search):
-npx -y zion-mcp@2.7.7 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.7 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.8 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
+npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -71,6 +73,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Intent | `name` | Required `args` |
 |---|---|---|
 | List enums | `GET_ALL_ENUM_DEFINITIONS` | — |
+| Read one enum by id, with the platforms each option is accepted on | `GET_ENUM_DEFINITION_DETAIL` | `enumId` |
 | Read enum group config (before adding an enum) | `GET_ENUM_DEFINITION_GROUPS` | — |
 | Add enums | `ADD_ENUM_DEFINITIONS` | `enums` |
 | Update enums | `UPDATE_ENUM_DEFINITIONS` | `enums` |
@@ -80,6 +83,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Delete enum groups | `DELETE_ENUM_DEFINITION_GROUPS` | `groupIds` |
 | File enums into a group | `MOVE_ENUM_DEFINITIONS_TO_GROUP` | `items` |
 | List object types | `GET_ALL_OBJECT_DEFINITIONS` | — |
+| Read one object type by id | `GET_OBJECT_TYPE_DEFINITION_DETAIL` | `typeId` |
 | Types an object type's field accepts | `GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES` | — |
 | Rename or retype an object type's fields | `UPDATE_TYPE_DEFINITION_FIELDS` | `fields`, `typeId` |
 | Reorder an object type's fields | `REORDER_TYPE_DEFINITION_FIELDS` | `orderedFieldNames`, `typeId` |
@@ -103,7 +107,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 ## Worked example: an OrderStatus enum
 
 ```bash
-npx -y zion-mcp@2.7.7 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[
   {"name":"ADD_ENUM_DEFINITIONS","args":{"enums":[
     {"name":"OrderStatus","displayName":"OrderStatus","options":[
       {"value":"PENDING","displayName":"PENDING"},
@@ -164,6 +168,6 @@ Add fields to an existing object type.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema validate && npx -y zion-mcp@2.7.7 project sync-backend
+npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

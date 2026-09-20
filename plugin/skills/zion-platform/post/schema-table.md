@@ -16,7 +16,7 @@ You CANNOT:
 Creating or deleting a table, and adding, retyping or deleting a field, rewrites the role permissions keyed to that table. Nobody asks for it, and a new table lands in every role including Anonymous User, so the grants you end up with are not the ones you chose. Each of those results names the roles it changed. Before changing one of them, read that role with GET_ROLE_DETAIL: a permission write is rejected until the role has been read in this session, and the role you would reach for is one your own table edit just moved.
 
 ### Column Types
-A new field's 'typeIdentifier' is copied verbatim from GET_TABLE_FIELD_SELECTABLE_TYPES, which lists every type a field on this project accepts. Its vocabulary is the wrapped identifier: s:p:string, s:p:decimal, s:p:bigint, s:p:boolean, s:p:timestamptz, s:p:timetz, s:p:date, s:p:jsonb, s:p:image, s:p:video, s:p:file, s:p:geo_point for the primitives, and "u:e:<enumId>" for an enum.
+A new field's 'typeIdentifier' is copied verbatim from GET_TABLE_FIELD_SELECTABLE_TYPES, which lists every type a field on this project accepts. Its vocabulary is the wrapped identifier: s:p:string, s:p:decimal, s:p:bigint, s:p:boolean, s:p:timestamptz, s:p:timetz, s:p:date, s:p:jsonb, s:p:image, s:p:video, s:p:file, s:p:geo_point, s:p:timezone for the primitives, and "u:e:<enumId>" for an enum.
 
 Never assemble one by hand, and never pass a bare name or a bare enum id — "decimal" and
 "mja44si4" are not field types here; "s:p:decimal" and "u:e:mja44si4" are. An enum the
@@ -86,22 +86,22 @@ A relation's generated FK carries two names, and which one a call wants depends 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.7 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.7 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.7 login
+npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.7 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.7 projects search):
-npx -y zion-mcp@2.7.7 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.7 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.8 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
+npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -124,6 +124,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Add unique constraints | `ADD_CONSTRAINTS` | `constraints` |
 | Delete unique constraints | `DELETE_CONSTRAINTS` | `constraints` |
 | Reorder a table's unique constraints | `REORDER_CONSTRAINTS` | `reorderedConstraintNames`, `tableDisplayName` |
+| Declare a BM25 full-text index on a TEXT field | `ADD_DATABASE_INDEX` | `fieldDisplayName`, `indexType`, `tableDisplayName`, `textConfig` |
+| Drop a declared index | `DELETE_DATABASE_INDEX` | `fieldDisplayName`, `tableDisplayName` |
 | List embedding models | `GET_AVAILABLE_EMBEDDING_MODELS` | — |
 | Enable vector search on a TEXT field | `ADD_TABLE_EXTENSION` | `fieldDisplayName`, `tableDisplayName` |
 | Retune vector search (e.g. change model) | `UPDATE_TABLE_EXTENSION` | `customEmbeddingId`, `fieldDisplayName`, `tableDisplayName` |
@@ -134,8 +136,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 Read the field-type picker first, then copy its `typeIdentifier` values verbatim:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
-npx -y zion-mcp@2.7.7 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
+npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
     {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
       {"apiName":"title","displayName":"title","typeIdentifier":"s:p:string","required":true,"defaultValue":""},
@@ -144,6 +146,8 @@ npx -y zion-mcp@2.7.7 schema tool-call --toolCalls '[
   ]}}
 ]'
 ```
+
+A BM25 index exists to be ordered by: declaring one on a TEXT field mints a `<field>_bm25` order-by field on the project GraphQL API, which is what ranks rows for a keyword search at runtime (`baas-database.md`). Only TEXT fields are indexable, a field carries at most one index per type, and the declaration is refused if a column already holds the `<field>_bm25` name. The parameters are frozen once it exists — retuning `k1`, `b`, or `textConfig` means `DELETE_DATABASE_INDEX` and declaring it again — and deleting the field drops its indexes with it. `GET_TABLES_INFO` reports what a table already carries. Vector search below is the other half: BM25 ranks the words that are there, embeddings match meaning.
 
 ## Arguments (generated from ztype)
 
@@ -206,6 +210,19 @@ Add unique constraints to a table, spanning one or more of its fields. Use this 
 Remove unique constraints from a table by constraint name.
 - `constraints` *(required)*: `array<{constraintName: string, tableDisplayName: string}>`
 
+### `ADD_DATABASE_INDEX`
+- `b`: `number` — BM25 length normalization, 0.0-1.0; engine default 0.75.
+- `fieldDisplayName` *(required)*: `string` — Display name of the field to build the index on.
+- `indexType` *(required)*: `enum(BM25)` — BM25 ranks a TEXT field by keyword relevance, queryable through the <field>_bm25 order-by field of the project GraphQL API.
+- `k1`: `number` — BM25 term-frequency saturation, 0.1-10.0; engine default 1.2.
+- `tableDisplayName` *(required)*: `string`
+- `textConfig` *(required)*: `enum(SIMPLE|ENGLISH|CHINESE)` — How the field's text is split into searchable terms. SIMPLE lowercases and splits on non-word characters with no stemming or stop-word removal — the safe pick for codes, identifiers, names, and mixed or unknown languages. ENGLISH adds English stemming and stop words, so 'running' matches 'run'. CHINESE segments with zhparser, which has no whitespace word boundaries to rely on.
+
+### `DELETE_DATABASE_INDEX`
+- `fieldDisplayName` *(required)*: `string`
+- `indexType`: `enum(BM25)` — Only needed when the field carries more than one index.
+- `tableDisplayName` *(required)*: `string`
+
 ### `ADD_TABLE_EXTENSION`
 
 Enable vector-embedding search on one TEXT field, using a model from GET_AVAILABLE_EMBEDDING_MODELS. Adds hidden embedding and token-count columns the backend maintains; use it when the app needs semantic search over that text rather than exact or prefix matching.
@@ -229,7 +246,7 @@ Remove a table's vector-search extension. The generated embedding columns and th
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema validate && npx -y zion-mcp@2.7.7 project sync-backend
+npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.
 
@@ -239,7 +256,7 @@ npx -y zion-mcp@2.7.7 schema validate && npx -y zion-mcp@2.7.7 project sync-back
 - The picker lists **primitives and enums only**, and returns the *concrete* type: `required` decides nullability, so never pass a `|null` union. A type it did not offer is rejected.
 - **Destructive ops** (`DELETE_TABLES`, `DELETE_FIELDS_AND_RELATIONS`, `DELETE_CONSTRAINTS`) lose data; list what will be deleted and warn the user.
 - **Type changes** aren't editable: delete + recreate the column.
-- If results look stale, run `npx -y zion-mcp@2.7.7 schema reload`.
+- If results look stale, run `npx -y zion-mcp@2.7.8 schema reload`.
 - **Enums / custom types** are out of scope here — see `schema-type.md`.
 
 ## Reading & writing deployed rows (runtime backend)
@@ -247,10 +264,10 @@ npx -y zion-mcp@2.7.7 schema validate && npx -y zion-mcp@2.7.7 project sync-back
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-npx -y zion-mcp@2.7.7 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-npx -y zion-mcp@2.7.7 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-npx -y zion-mcp@2.7.7 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-npx -y zion-mcp@2.7.7 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+npx -y zion-mcp@2.7.8 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.8 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+npx -y zion-mcp@2.7.8 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+npx -y zion-mcp@2.7.8 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
 - `insert` must supply every NOT-NULL column; object keys are the column **apiName** (what the schema read tools report).
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.

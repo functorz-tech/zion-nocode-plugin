@@ -154,6 +154,7 @@ Pages have NO separate query list — a page query IS a read-only page variable 
 - Building a MODAL does not make it reachable. Without a SHOW_MODAL action pointing at it, nothing opens it, and the modal you just laid out is dead UI the user cannot reach.
 - An action that produces a RESULT — GET_LOCATION, UPLOAD_FILE, GENERATE_QR_CODE and the other result-bearing kinds — can only keep it through assignToVariable, a writable page variable created with `ADD_COMPONENT_VARIABLES` on the page the component sits on. Their success branches cannot see the result, so an action without assignToVariable runs and throws its answer away. Create the variable first.
 - SIGN_UP and USER_LOGIN are separate actions, and the password slot on a SIGN_UP decides what the account can sign in with later: leave it unbound and the account has no password, so a USER_LOGIN with credentialType PASSWORD can never succeed for anyone who signed up there. Build the pair together, or sign in with VERIFICATION_CODE.
+- A WeChat mini-program signs its user in by itself. The client is created with a silent WeChat login in its own app-did-load configuration, which the editor will not let anyone delete, so whoever opens the app is already signed in, and the account is created there too. Do NOT build a sign-in or sign-up screen there and do NOT wire a login action: USER_LOGIN offers no WeChat mode at all, the silent login belongs to that configuration alone, and SIGN_IN / SIGN_UP / SIGN_OUT are absent from the mini-program's selectable actions. When the app needs the user's phone number, use OBTAIN_PHONE_NUMBER.
 - MUTATION writes the database without an action flow. rolesWithoutPermission in its result is report-only — grant the table permission with the permission plugin or the write is denied at runtime, which looks like a silent no-op to the user. rowScope CURRENT_ITEM is valid only inside a LIST cell; refreshOnSuccess is preferable to a separate REFRESH.
 - SCHEDULED_JOB_CONTROL starts or pauses a page timer, but NO tool creates the job — those are made in the editor's page Action panel. If the page has none, say so and ask the user to add it rather than trying to build one.
 - CONDITIONAL is how ONE event does different things in different cases: branches in evaluation order, first match wins, each branch narrowed at the echoed conditionSchemaPath and filled by a further `ADD_COMPONENT_ACTIONS` carrying that branch's conditionalBranchId. Leave the last branch always-true as the else. Without it every action on the event fires on every click — onSuccess / onFailure branch on whether a call worked, never on a data condition. Do NOT reach for an action flow to get branching: a flow's BRANCH node runs on the server and cannot navigate, toast or open a modal, so frontend branching belongs here. This decides what HAPPENS; a CONDITIONAL_VIEW decides what is DISPLAYED.
@@ -176,22 +177,22 @@ Name what you are fixing and fix it. A screen that passes `schema validate` and 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.7 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.7 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.7 login
+npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.7 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.7 projects search):
-npx -y zion-mcp@2.7.7 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.7 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.8 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
+npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -213,27 +214,15 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Colour the tab bar | `UPDATE_TAB_BAR_STYLE` | — |
 | Duplicate components with their subtrees | `DUPLICATE_COMPONENTS` | `componentIds` |
 | Append one event's action handlers to another | `DUPLICATE_COMPONENT_ACTIONS` | `componentId`, `eventType`, `sourceComponentId` |
-| Whole theme: variables + scrollbar | `GET_THEME_INFO` | — |
-| Add theme variables | `ADD_THEME_VARIABLES` | `items` |
-| Rename or revalue theme variables | `UPDATE_THEME_VARIABLES` | `items` |
-| Delete theme variables (presets rejected) | `DELETE_THEME_VARIABLES` | `items` |
-| Scrollbar appearance (web only) | `SET_SCROLLBAR_STYLE` | — |
 | Remove colour-palette entries | `DELETE_COLOR_THEMES` | `items` |
-| Theme variables, all categories, plus scrollbar style | `GET_THEME_INFO` | — |
-| Add theme variables | `ADD_THEME_VARIABLES` | `items` |
-| Rename a theme variable or replace its value | `UPDATE_THEME_VARIABLES` | `items` |
-| Remove theme variables | `DELETE_THEME_VARIABLES` | `items` |
-| Scrollbar appearance, web only | `SET_SCROLLBAR_STYLE` | — |
 
 Component writes go through the CLI like any other edit: `GET_COMPONENT_TEMPLATE` then `ADD_COMPONENT` to build, `UPDATE_COMPONENT_STYLE` to restyle, `MOVE_COMPONENTS` to restructure, `ADD_COMPONENT_ACTIONS` to wire events, `DELETE_COMPONENTS` to remove — see "Building & Editing the Component Tree" above. Two limits are real. A project still on the legacy component model rejects every component write with `TRACK_MISMATCH` and says so; when that happens, give the user numbered editor steps instead. And you cannot see what you built — the editor canvas and error center are not reachable from here, so a screen can be schema-valid and still look wrong. Verify structurally with `GET_CONTAINER_CHILDREN_INFO` and `GET_INCOMPLETE_STRUCTURES` (its `responsiveRisks` catches the desktop-width-on-phone case), and where appearance is the acceptance criterion, prefer handing the user steps over guessing.
 
-Theme variables carry a value whose shape differs per category, and that shape is not documented per category — read `GET_THEME_INFO` first and copy the shape of an existing variable in the same category, the same way component styles are copied from `GET_COMPONENT_TYPE_CAPABILITIES`. Preset variables cannot be deleted: their ids are what bindings and the theme algorithm resolve against. A component still bound to a deleted variable falls back to no value rather than erroring, so it goes wrong silently — check usages before removing one.
-
-The preset tab-bar icon library is not reachable from here either. A shown tab needs an icon for both its normal and its selected state or the project reports an error, and those exIds are not derivable — `GET_TAB_BAR_INFO` reads back what the slots already hold, so a re-point can reuse those, but a slot with no icon needs one brought in through the editor (`web-assets.md`) or picked there by the user.
+The preset tab-bar icon library is reachable: `npx -y zion-mcp@2.7.8 component tab-bar-icons` lists every icon this deployment ships as a name and the media exId `UPDATE_TAB_BAR_ITEMS` takes. A shown tab needs an icon for both its normal and its selected state or the project reports an error, and the exIds are hashids of media rows that cannot be derived from an icon's name — a value that could not be an exId is refused by the write rather than failing the mini-program build over a file it cannot find, so take them from that listing and never invent one. An icon the library does not ship still has to be brought in through the editor (`web-assets.md`) or picked there by the user: nothing here imports media.
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema validate && npx -y zion-mcp@2.7.7 project sync-backend
+npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

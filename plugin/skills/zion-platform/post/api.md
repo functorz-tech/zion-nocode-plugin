@@ -15,29 +15,32 @@ A body-carrying method needs a body FORMAT, and `SET_API_CONTENT_TYPE` is what s
 
 A media field, or an object field carried as a JSON string, cannot travel over HTTP as itself: it needs a conversion, and a media field left without one leaves the API incomplete. `GET_API_CODEC_OPTIONS` says which slots need one and what each allows; `SET_API_CODECS` applies it and `DELETE_API_CODECS` removes it.
 
+### Response Shapes
+A response config's type is what downstream reads the result through, and only an object type puts that result's fields where a binding can see and pick them. A JSON response still yields values — through the get-value-from-JSON formula — but the key path is a string you have to already know and spell by hand, nothing in the project lists what the payload holds, and a key that does not match it comes back empty rather than erroring; a text response does not even reach that formula. So whenever the endpoint documents what it returns — and it usually does — give the response a shape: `ADD_API_RESPONSE_CONFIGS` / `UPDATE_API_RESPONSE_CONFIGS` with `seedObjectType: true` mint an object type owned by this API and echo its `responseTypeId`, which you then describe with the 'type' plugin's `ADD_TYPE_DEFINITION_FIELDS`, exactly as you do a JSON request body. Add `arrayLevel: 1` where the endpoint returns a list of that shape. Reach for the JSON type only when the body's shape genuinely varies from call to call, and for text only when the response is not JSON at all (a 204 with no content, a plain-text body).
+
 ### Types
 Every `type` argument here is picked, not written: call `GET_API_SELECTABLE_TYPES` for the slot being filled and copy a returned `typeIdentifier` verbatim. A private object type belongs to the one feature that owns it and is never offered to another, so to reuse a shape some other feature owns, publish it with `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` and select the public copy. This API's own JSON body type is the exception — it is already this API's, so describe it in place with `ADD_TYPE_DEFINITION_FIELDS`. Lists are not enumerated — the nesting has no end — so a list response or input variable is a returned identifier plus `arrayLevel: 1`; the URL, header and form-body parameters hold one value, take no `arrayLevel`, and accept no list at all.
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates every op below on pre-refactor projects, where the API-integration workspace feature does not exist. On a pre-refactor project integrate external HTTP endpoints as TPA configs (`third-party-api.md`) instead. Check `npx -y zion-mcp@2.7.7 schema load` → `typeSystem` first.
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates every op below on pre-refactor projects, where the API-integration workspace feature does not exist. On a pre-refactor project integrate external HTTP endpoints as TPA configs (`third-party-api.md`) instead. Check `npx -y zion-mcp@2.7.8 schema load` → `typeSystem` first.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.7 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.7 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.7 login
+npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.7 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.7 projects search):
-npx -y zion-mcp@2.7.7 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.7 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.8 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
+npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -107,14 +110,15 @@ Add shared constants (base URLs, API keys, tokens) to a workspace; its APIs refe
 ### `ADD_APIS`
 
 Create one or more API endpoints (name, HTTP method, URL) under a workspaceId. Each is seeded with empty parameters / responses; add those afterwards.
-- `items` *(required)*: `array<{displayName: string, inputVariables?: array<{arrayLevel?: integer, displayName: string, type: string}>, method: enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD), paginationEnabled?: boolean, responseConfigs?: array<{arrayLevel?: integer, isCustom?: boolean, name: string, responseType?: string, statusCode: array<string>}>, url: string, useAsData?: boolean, workspaceId: string}>`
+- `items` *(required)*: `array<{displayName: string, inputVariables?: array<{arrayLevel?: integer, displayName: string, type: string}>, method: enum(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD), paginationEnabled?: boolean, responseConfigs?: array<{arrayLevel?: integer, isCustom?: boolean, name: string, responseType?: string, seedObjectType?: boolean, statusCode: array<string>}>, url: string, useAsData?: boolean, workspaceId: string}>`
   - `items[].inputVariables[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
   - `items[].inputVariables[].type` — copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
   - `items[].paginationEnabled` — When true, 'pageIndex'/'pageSize' input variables are seeded to page list responses.
   - `items[].responseConfigs` — A Default fallback config is always created even when omitted. Request parameters are added separately with ADD_API_PARAMETERS.
-  - `items[].responseConfigs[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not. Wraps the default optional string when [responseType] is omitted.
+  - `items[].responseConfigs[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not. Wraps the seeded object type, or the default optional string when neither [responseType] nor [seedObjectType] is given.
   - `items[].responseConfigs[].isCustom` — true → matches only the listed status codes; false (default) → the fallback config that matches everything else (an API always has exactly one).
-  - `items[].responseConfigs[].responseType` — Type of the response body; defaults to an optional string. Otherwise copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
+  - `items[].responseConfigs[].responseType` — Type of the response body; defaults to an optional string. Only an object type puts the response's fields where a binding can see and pick them. A JSON response still yields values — through the get-value-from-JSON formula — but the key path is a string the caller has to already know and spell by hand, nothing lists what the payload holds, and a key that does not match comes back empty instead of failing; a text response does not even reach that formula. So describe the shape whenever the endpoint documents one — `seedObjectType` is the way to — and keep JSON for a body whose shape genuinely varies. Otherwise copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
+  - `items[].responseConfigs[].seedObjectType` — true mints an empty object type owned by this API and points the response at it — the response half of what `application/json` does for a request body. Fill it in with ADD_TYPE_DEFINITION_FIELDS at the `responseTypeId` the result echoes. It supplies the type, so `responseType` is rejected beside it; `arrayLevel: 1` makes the response a list of it.
   - `items[].responseConfigs[].statusCode` — HTTP status codes this config matches (e.g. ['200']); the fallback ignores them.
   - `items[].url` — Base URL only — scheme + host (+ port), e.g. "https://api.example.com". No sub-path, query string or fragment: add the sub-path with ADD_API_PARAMETERS as ordered PATH parameters and the query string as QUERY parameters.
   - `items[].useAsData` — true (default) exposes the API as a queryable data source; false makes it action-only.
@@ -145,12 +149,13 @@ Add request parameters to an API. Each carries a position (path / query / header
 
 ### `ADD_API_RESPONSE_CONFIGS`
 
-Add typed response configs to an API — the shape of the JSON it returns, so downstream can bind to its fields.
+Add typed response configs to an API — the shape of the JSON it returns, so downstream can bind to its fields. Pass `seedObjectType: true` to have that shape minted here and fill it in with ADD_TYPE_DEFINITION_FIELDS on the `responseTypeId` the result echoes; a response left as JSON exposes no field to pick, only a key path spelled by hand.
 - `apiId` *(required)*: `string`
-- `items` *(required)*: `array<{arrayLevel?: integer, isCustom?: boolean, name: string, responseType?: string, statusCode: array<string>}>`
-  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not. Wraps the default optional string when [responseType] is omitted.
+- `items` *(required)*: `array<{arrayLevel?: integer, isCustom?: boolean, name: string, responseType?: string, seedObjectType?: boolean, statusCode: array<string>}>`
+  - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not. Wraps the seeded object type, or the default optional string when neither [responseType] nor [seedObjectType] is given.
   - `items[].isCustom` — true → matches only the listed status codes; false (default) → the fallback config that matches everything else (an API always has exactly one).
-  - `items[].responseType` — Type of the response body; defaults to an optional string. Otherwise copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
+  - `items[].responseType` — Type of the response body; defaults to an optional string. Only an object type puts the response's fields where a binding can see and pick them. A JSON response still yields values — through the get-value-from-JSON formula — but the key path is a string the caller has to already know and spell by hand, nothing lists what the payload holds, and a key that does not match comes back empty instead of failing; a text response does not even reach that formula. So describe the shape whenever the endpoint documents one — `seedObjectType` is the way to — and keep JSON for a body whose shape genuinely varies. Otherwise copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
+  - `items[].seedObjectType` — true mints an empty object type owned by this API and points the response at it — the response half of what `application/json` does for a request body. Fill it in with ADD_TYPE_DEFINITION_FIELDS at the `responseTypeId` the result echoes. It supplies the type, so `responseType` is rejected beside it; `arrayLevel: 1` makes the response a list of it.
   - `items[].statusCode` — HTTP status codes this config matches (e.g. ['200']); the fallback ignores them.
 
 ### `ADD_API_INPUT_VARIABLES`
@@ -164,6 +169,6 @@ Declare input variables on an API — the values a caller supplies, bindable int
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.7 schema validate && npx -y zion-mcp@2.7.7 project sync-backend
+npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

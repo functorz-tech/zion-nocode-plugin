@@ -5,18 +5,18 @@ The type system owns named, reusable types: enums and custom objects. Data model
 
 ### Enums
 An enum and each of its options carry a permanent id. The platform assigns it — never send one — and every create returns the minted ids in its result. An id is never editable afterwards, which is what keeps every column and binding that references it valid. Reference an enum as a column type in the 'database' plugin by the exact canonical identifier `u:e:<enumId>` — include the `u:e:` prefix (for example, `u:e:OrderStatus`).
-- An option's id is the value a column's default and any binding stores, so it is the id you carry to the other plugins, not the label.
-- An option's `name` is its user-visible label — NOT an identifier, and the only part of an option you can edit. Use a natural Chinese phrase (e.g. enum displayName "订单状态", option name "待处理"). The ids stay English as above. Non-blank, ≤200 chars.
-- An enum also has a displayName (same rule) and an optional description; options have no description.
+- An option's id is the value a column's default and any binding stores, so it is the id you carry to the other plugins, not the name.
+- An option's `name` is the only part of an option you can edit, and it is an identifier: letters, digits and underscores only, never starting with a digit (`PENDING`, `in_progress`). It is the enum literal the live database column holds once the project is deployed, so a name carrying spaces, hyphens or non-ASCII words is rejected outright — by the editor and by these tools alike. Non-blank, ≤200 chars.
+- An enum's displayName is where the user-facing wording goes instead; options have none of their own, only the identifier above. Use a natural Chinese phrase (e.g. enum displayName "订单状态"). The ids and the option names stay English as above. Non-blank, ≤200 chars. An enum also takes an optional description; options take none.
 
 Operations:
 - `GET_ALL_ENUM_DEFINITIONS`: list enums with their options. Editing an enum requires having read it first — this listing reads every enum at once.
 - `GET_ENUM_DEFINITION_DETAIL`: read one enum by id, each option with the client platforms that accept it. This satisfies that requirement for that enum alone, so an edit to a known enum needs only this call. Check an option's `platforms` before wiring it into an action: an action carrying an option is invalid on a client whose platform is missing from it.
 - `ADD_ENUM_DEFINITIONS`: create enums with their initial options inline.
 - `UPDATE_ENUM_DEFINITIONS`: change an enum's own displayName / description. Omitted fields are unchanged. Its `options` argument REPLACES the whole option list, so use the per-option tools below for single-option edits.
-- `ADD_ENUM_OPTIONS` / `UPDATE_ENUM_OPTIONS` / `DELETE_ENUM_OPTIONS`: append options, rename their labels, or remove them.
+- `ADD_ENUM_OPTIONS` / `UPDATE_ENUM_OPTIONS` / `DELETE_ENUM_OPTIONS`: append options, rename them, or remove them.
 
-Adding an option is always safe. Deleting an enum or an option is destructive: anything referencing it breaks, and nothing repoints it for you — check usages, delete or repoint the columns first, and tell the user. There is no way to change an id, so a "rename" of an id means delete + recreate with the same breakage; if the user only wants different wording, edit the label (`name` / displayName) instead and the id can stay.
+Adding an option is always safe. Deleting an enum or an option is destructive: anything referencing it breaks, and nothing repoints it for you — check usages, delete or repoint the columns first, and tell the user. There is no way to change an id, so a "rename" of an id means delete + recreate with the same breakage; if the user only wants different wording, edit the enum's displayName instead and the id can stay.
 
 If a column should use a new enum, create the enum here first, in the same turn and before the column: take the minted id out of the create result and the column can reference `u:e:<thatId>` straight away.
 
@@ -44,26 +44,26 @@ A public type is an entry in the project's shared object type list. A private on
 
 Either way the copy is a NEW type with a new id, and nothing points at it yet: the feature keeps using the old type until you set that slot's type to the `typeIdentifier` the result echoes.
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.7.8 schema status` → `typeSystem`.
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates these tools on pre-refactor projects. Check `npx -y zion-mcp@2.7.11 schema status` → `typeSystem`.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.11 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
+npx -y zion-mcp@2.7.11 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.11 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.8 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
-npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.11 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.11 projects search):
+npx -y zion-mcp@2.7.11 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.11 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.11 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -107,16 +107,16 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 ## Worked example: an OrderStatus enum
 
 ```bash
-npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.11 schema tool-call --toolCalls '[
   {"name":"ADD_ENUM_DEFINITIONS","args":{"enums":[
-    {"name":"OrderStatus","displayName":"OrderStatus","options":[
-      {"value":"PENDING","displayName":"PENDING"},
-      {"value":"PAID","displayName":"PAID"}
+    {"displayName":"OrderStatus","options":[
+      {"name":"PENDING"},
+      {"name":"PAID"}
     ]}
   ]}}
 ]'
 ```
-Create the enum **before** any column that references it (by its PascalCase id). Editing in-use options is destructive — prefer ADDING.
+Each option's `name` is an identifier — letters, digits and underscores, never leading with a digit — because it is the enum literal the deployed database column holds; a name with spaces, hyphens or non-ASCII words is rejected. The enum's id is minted by the platform and echoed back: create the enum **before** any column that references it, and take `u:e:<thatId>` from the result. Editing in-use options is destructive — prefer ADDING.
 
 ## Arguments (generated from ztype)
 
@@ -127,6 +127,7 @@ Shapes and field docs below are generated from ztype's `tool-schemas.json` (the 
 Create enum types, each with a displayName and its initial options. Ids are assigned by the platform and returned in the result — do not send one. Read list_enum_groups first — creating an enum also writes the enum group configuration.
 - `enums` *(required)*: `array<{description?: string, displayName: string, groupId?: string, options: array<{name: string}>}>`
   - `enums[].groupId` — Target enum group id; omit to add the enum to the default ungrouped section
+  - `enums[].options[].name` — Letters, digits and underscores only, never starting with a digit (PENDING, in_progress). This is the enum literal the live database column holds once the project is deployed, so a name carrying spaces, hyphens or non-ASCII words is rejected outright, not sanitized — the user-facing wording belongs on the enum's own displayName or description.
 
 ### `UPDATE_ENUM_DEFINITIONS`
 
@@ -136,6 +137,7 @@ Update enums' own displayName / description; omitted fields are unchanged. The `
   - `enums{}.displayName` — New display name for the enum; omit to keep the current display name
   - `enums{}.options` — Complete list of options after update; omit to keep the current options. Any option not listed is deleted — prefer ADD/UPDATE/DELETE_ENUM_OPTIONS for single-option edits.
   - `enums{}.options[].id` — Id of the existing option, copied from a read of this enum
+  - `enums{}.options[].name` — Letters, digits and underscores only, never starting with a digit (PENDING, in_progress). This is the enum literal the live database column holds once the project is deployed, so a name carrying spaces, hyphens or non-ASCII words is rejected outright, not sanitized — the user-facing wording belongs on the enum's own displayName or description.
 
 ### `GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES`
 
@@ -168,6 +170,6 @@ Add fields to an existing object type.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
+npx -y zion-mcp@2.7.11 schema validate && npx -y zion-mcp@2.7.11 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

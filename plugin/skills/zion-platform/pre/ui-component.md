@@ -157,7 +157,7 @@ Pages have NO separate query list — a page query IS a read-only page variable 
 - A WeChat mini-program signs its user in by itself. The client is created with a silent WeChat login in its own app-did-load configuration, which the editor will not let anyone delete, so whoever opens the app is already signed in, and the account is created there too. Do NOT build a sign-in or sign-up screen there and do NOT wire a login action: USER_LOGIN offers no WeChat mode at all, the silent login belongs to that configuration alone, and SIGN_IN / SIGN_UP / SIGN_OUT are absent from the mini-program's selectable actions. When the app needs the user's phone number, use OBTAIN_PHONE_NUMBER.
 - MUTATION writes the database without an action flow. rolesWithoutPermission in its result is report-only — grant the table permission with the permission plugin or the write is denied at runtime, which looks like a silent no-op to the user. rowScope CURRENT_ITEM is valid only inside a LIST cell; refreshOnSuccess is preferable to a separate REFRESH.
 - SCHEDULED_JOB_CONTROL starts or pauses a page timer, but NO tool creates the job — those are made in the editor's page Action panel. If the page has none, say so and ask the user to add it rather than trying to build one.
-- CONDITIONAL is how ONE event does different things in different cases: branches in evaluation order, first match wins, each branch narrowed at the echoed conditionSchemaPath and filled by a further `ADD_COMPONENT_ACTIONS` carrying that branch's conditionalBranchId. Leave the last branch always-true as the else. Without it every action on the event fires on every click — onSuccess / onFailure branch on whether a call worked, never on a data condition. Do NOT reach for an action flow to get branching: a flow's BRANCH node runs on the server and cannot navigate, toast or open a modal, so frontend branching belongs here. This decides what HAPPENS; a CONDITIONAL_VIEW decides what is DISPLAYED.
+- CONDITIONAL is how ONE event does different things in different cases: branches in evaluation order, first match wins, each branch narrowed at the echoed conditionSchemaPath and filled by a further `ADD_COMPONENT_ACTIONS` carrying that branch's conditionalBranchId. Leave the last branch always-true as the else. Without it every action on the event fires on every click — ON_SUCCESS / ON_FAILURE branch on whether a call worked, never on a data condition. Do NOT reach for an action flow to get branching: a flow's BRANCH node runs on the server and cannot navigate, toast or open a modal, so frontend branching belongs here. This decides what HAPPENS; a CONDITIONAL_VIEW decides what is DISPLAYED.
 - There is no per-component conditional visibility — an ordinary component has no data-driven show/hide flag. To make content appear only when a condition holds, wrap it in a CONDITIONAL_VIEW container and gate the branch with the bindings plugin's condition tools (see CONDITIONAL_VIEW branches under "Slots of Special Components").
 
 ### Motion Is One Moment, Not A Coat Of Paint
@@ -177,22 +177,22 @@ Name what you are fixing and fix it. A screen that passes `schema validate` and 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.11 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
+npx -y zion-mcp@2.7.11 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.11 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.8 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
-npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.11 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.11 projects search):
+npx -y zion-mcp@2.7.11 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.11 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.11 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -218,11 +218,11 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 Component writes go through the CLI like any other edit: `GET_COMPONENT_TEMPLATE` then `ADD_COMPONENT` to build, `UPDATE_COMPONENT_STYLE` to restyle, `MOVE_COMPONENTS` to restructure, `ADD_COMPONENT_ACTIONS` to wire events, `DELETE_COMPONENTS` to remove — see "Building & Editing the Component Tree" above. Two limits are real. A project still on the legacy component model rejects every component write with `TRACK_MISMATCH` and says so; when that happens, give the user numbered editor steps instead. And you cannot see what you built — the editor canvas and error center are not reachable from here, so a screen can be schema-valid and still look wrong. Verify structurally with `GET_CONTAINER_CHILDREN_INFO` and `GET_INCOMPLETE_STRUCTURES` (its `responsiveRisks` catches the desktop-width-on-phone case), and where appearance is the acceptance criterion, prefer handing the user steps over guessing.
 
-The preset tab-bar icon library is reachable: `npx -y zion-mcp@2.7.8 component tab-bar-icons` lists every icon this deployment ships as a name and the media exId `UPDATE_TAB_BAR_ITEMS` takes. A shown tab needs an icon for both its normal and its selected state or the project reports an error, and the exIds are hashids of media rows that cannot be derived from an icon's name — a value that could not be an exId is refused by the write rather than failing the mini-program build over a file it cannot find, so take them from that listing and never invent one. An icon the library does not ship still has to be brought in through the editor (`web-assets.md`) or picked there by the user: nothing here imports media.
+The preset tab-bar icon library is reachable: `npx -y zion-mcp@2.7.11 component tab-bar-icons` lists every icon this deployment ships as a name and the media exId `UPDATE_TAB_BAR_ITEMS` takes. A shown tab needs an icon for both its normal and its selected state or the project reports an error, and the exIds are hashids of media rows that cannot be derived from an icon's name — a value that could not be an exId is refused by the write rather than failing the mini-program build over a file it cannot find, so take them from that listing and never invent one. An icon the library does not ship still has to be brought in through the editor (`web-assets.md`) or picked there by the user: nothing here imports media.
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
+npx -y zion-mcp@2.7.11 schema validate && npx -y zion-mcp@2.7.11 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

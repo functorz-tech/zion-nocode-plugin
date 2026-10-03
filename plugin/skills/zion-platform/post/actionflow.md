@@ -45,7 +45,7 @@ Three tiers, in order of preference:
 Declared at flow level, accessible by all nodes, assigned with "Set Variable" node.
 
 ### Inputs & Outputs
-Inspect a flow first with `GET_ALL_ACTION_FLOWS_INFO` / `GET_ACTION_FLOW_DETAIL` (unless its detail is already provided in your context). Declare typed **input params** with `ADD_ACTION_FLOW_INPUT_PARAMS`; set each param's type to a value copied verbatim from `GET_ACTION_FLOW_SELECTABLE_TYPES` (never hand-build the type string).
+Inspect a flow first with `GET_ALL_ACTION_FLOWS_INFO` / `GET_ACTION_FLOW_DETAIL` (unless its detail is already provided in your context). Declare typed **input params** with `ADD_ACTION_FLOW_INPUT_PARAMS`; set each param's type to a value copied verbatim from `GET_ACTION_FLOW_SELECTABLE_TYPES` (never hand-build the type string). Every input param, variable, output field and code-node input/output name is an identifier: letters, digits and underscores only, never starting with a digit. The editor enforces the same rule on a manual rename, so a name that breaks it is one the user cannot repair in the UI; put Chinese or otherwise user-facing wording in a displayName or description instead.
 
 A flow returns a **single typed output value**: set its type with `SET_ACTION_FLOW_OUTPUT`
 (type copied from `GET_ACTION_FLOW_SELECTABLE_TYPES`) and clear it with
@@ -84,22 +84,22 @@ The list above is the methods you will reach for, not the whole API. The complet
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.11 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
+npx -y zion-mcp@2.7.11 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.11 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.8 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
-npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.11 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.11 projects search):
+npx -y zion-mcp@2.7.11 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.11 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.11 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -191,7 +191,7 @@ narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FI
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.8 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Discover the current set with `npx -y zion-mcp@2.7.11 actionflow list-node-templates` (returns each template's `templateCodeId` plus its input/output param types), then insert one via `ADD_ACTION_FLOW_NODE` with the `TEMPLATE_CODE` node type and that `templateCodeId`, and bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -237,7 +237,7 @@ Declare one or more typed input params on an action flow. Each param's type must
 - `actionFlowId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, name: string, type?: string}>`
   - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
-  - `items[].name` — Parameter name — also the key callers bind values to. Must be unique within the flow.
+  - `items[].name` — Parameter name — also the key callers bind values to. Must be unique within the flow. Letters, digits and underscores only, never starting with a digit — the editor enforces the same rule on a manual rename, so a name that fails it cannot be edited in the UI once written. Write user-facing wording as a displayName or description instead.
   - `items[].type` — The parameter's type. Copy a `typeIdentifier` returned by GET_ACTION_FLOW_SELECTABLE_TYPES verbatim — never hand-build the string. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Defaults to an optional string when omitted.
 
 ### `UPDATE_ACTION_FLOW_INPUT_PARAMS`
@@ -247,7 +247,7 @@ Update existing action-flow input params (rename, retype, or change required).
 - `items` *(required)*: `array<{arrayLevel?: integer, name: string, newName?: string, type?: string}>`
   - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not. Send it together with the type it wraps — a level on its own would change nothing, so it is rejected rather than ignored.
   - `items[].name` — Current parameter name (key).
-  - `items[].newName` — New name to rename the parameter to.
+  - `items[].newName` — New name to rename the parameter to. Letters, digits and underscores only, never starting with a digit — the editor enforces the same rule on a manual rename, so a name that fails it cannot be edited in the UI once written. Write user-facing wording as a displayName or description instead.
   - `items[].type` — New type. Copy a `typeIdentifier` from GET_ACTION_FLOW_SELECTABLE_TYPES verbatim (never hand-build the string); null leaves it unchanged. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled.
 
 ### `DELETE_ACTION_FLOW_INPUT_PARAMS`
@@ -325,7 +325,7 @@ Declare flow-level variables (accessible by all nodes, assigned via a Set Variab
 - `actionFlowId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, displayName: string, type?: string}>`
   - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
-  - `items[].displayName` — Human-readable name of the global variable.
+  - `items[].displayName` — Name of the global variable. Letters, digits and underscores only, never starting with a digit — the editor enforces the same rule on a manual rename, so a name that fails it cannot be edited in the UI once written. Write user-facing wording as a displayName or description instead.
   - `items[].type` — The variable's type. Copy a `typeIdentifier` returned by GET_ACTION_FLOW_SELECTABLE_TYPES verbatim — never hand-build the string. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Defaults to an optional string when omitted.
 
 ### `UPDATE_ACTION_FLOW_GLOBAL_VARIABLES`
@@ -334,6 +334,7 @@ Rename or retype existing flow-level variables. Read variable keys from GET_ACTI
 - `actionFlowId` *(required)*: `string`
 - `items` *(required)*: `array<{arrayLevel?: integer, displayName?: string, type?: string, variableKey: string}>`
   - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not. Send it together with the type it wraps — a level on its own would change nothing, so it is rejected rather than ignored.
+  - `items[].displayName` — New name; null leaves it unchanged. Letters, digits and underscores only, never starting with a digit — the editor enforces the same rule on a manual rename, so a name that fails it cannot be edited in the UI once written. Write user-facing wording as a displayName or description instead.
   - `items[].type` — New type. Copy a `typeIdentifier` from GET_ACTION_FLOW_SELECTABLE_TYPES verbatim (never hand-build the string); null leaves it unchanged. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled.
   - `items[].variableKey` — The map key (id) of the global variable to update — read it from GET_ACTION_FLOW_DETAIL.
 
@@ -355,7 +356,7 @@ Add assignment targets (flow-variable keys) to a Set Variable node; bind each va
 Add a named input slot (referenced as args.<name>) to a Run Code node; bind its value with the bindings plugin. Generate the code body with CREATE_CONST_BINDING.
 - `actionFlowId` *(required)*: `string`
 - `arrayLevel`: `integer` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
-- `name` *(required)*: `string` — Name (key) of the new input; must be unique within the node.
+- `name` *(required)*: `string` — Name (key) of the new input; must be unique within the node. Letters, digits and underscores only, never starting with a digit — the editor enforces the same rule on a manual rename, so a name that fails it cannot be edited in the UI once written. Write user-facing wording as a displayName or description instead.
 - `nodeId` *(required)*: `string` — uniqueId of the CUSTOM_CODE node.
 - `type`: `string` — The input's type. Copy a `typeIdentifier` returned by GET_ACTION_FLOW_SELECTABLE_TYPES with slot=CUSTOM_CODE_INPUT verbatim — never hand-build the string. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Defaults to an optional string when omitted. Only projects on the refactored type system carry a per-input type.
 
@@ -450,6 +451,6 @@ Clear the flow's single typed output value.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
+npx -y zion-mcp@2.7.11 schema validate && npx -y zion-mcp@2.7.11 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

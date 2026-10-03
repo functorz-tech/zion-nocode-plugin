@@ -57,22 +57,22 @@ ACTIVATE_PAYMENT turns the module on one type at a time, and the actionflow plug
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.11 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
+npx -y zion-mcp@2.7.11 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.11 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.8 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
-npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.11 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.11 projects search):
+npx -y zion-mcp@2.7.11 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.11 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.11 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -82,8 +82,11 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Intent | `name` | Required `args` |
 |---|---|---|
 | Turn payments on, naming the order table | `ACTIVATE_PAYMENT` | `paymentType` |
+| Payment configs + the products an action can charge through | `GET_PAYMENT_CONFIGS` | — |
 
 Activation is the part you can drive: it provisions the payment tables and the auto-generated WeChat Pay / Alipay Actionflows and webhooks. Pass `orderTableDisplayName` on first activation only — an existing table you designed with `schema-table.md`. The WeChat Pay / Alipay credentials and provider settings stay editor-only (Action → Payment), so hand those to the user.
+
+A frontend payment action (`component.md`) carries a `configId` and a `paymentProduct`, and both come from `GET_PAYMENT_CONFIGS`: the id of a config, and one of that config's `usableProductsOnThisClient`. `legacyPaymentModel` true means the project predates payment configs and the action carries neither.
 
 Enforce the secure transaction pattern — never compute price on the client; fulfill only in the idempotent webhook Actionflow (`webhook.md`). Provider callbacks arrive `managed: true` and reject every edit.
 
@@ -100,6 +103,6 @@ Activate one payment type on this project. Read overview.project first: it repor
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
+npx -y zion-mcp@2.7.11 schema validate && npx -y zion-mcp@2.7.11 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

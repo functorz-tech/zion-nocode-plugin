@@ -42,24 +42,27 @@ A FORMULA or CONDITIONAL value is built in several steps at the value's schema p
 - Conditional: `CREATE_CONDITIONAL_BINDING` (seed branches with initialBranchNames; operation REPLACE), add more with `INSERT_CONDITIONAL_DATA`. For each branch, build its predicate with `INSERT_CONDITION_BOOL_EXP`, choose the comparison via `GET_EXPRESSION_CONDITION_OPERATORS` + `UPDATE_EXPRESSION_CONDITION_OPERATOR`, fill both operands with OPTION / CONST_VALUE bindings, and shape the expression with `NEST_CONDITION_BOOL_EXP`, `TOGGLE_CONDITION_BOOL_EXP_AND_OR`, `TOGGLE_CONDITION_BOOL_EXP_NOT`, `DELETE_CONDITION_BOOL_EXP`; then bind the branch's resulting value. The first branch whose predicate is true wins — order them with `REORDER_CONDITIONAL_DATA`.
 - There is no string is-empty operator (`_is_empty` accepts lists only, and `""` is not null): test text emptiness as `stringLength(x) > 0` via a formula binding on the operand.
 
+### Page links
+The global page-link option binds a getPageUrl function binding with no target page, so the link points nowhere until you call `SET_FUNCTION_BINDING_PAGE_URL_TARGET` at the same schema path with the target page's id. Fill each parameter it returns under argSchemaPaths with an OPTION / CONST_VALUE binding at that path, copied verbatim.
+
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.11 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
+npx -y zion-mcp@2.7.11 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.11 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.8 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
-npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.11 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.11 projects search):
+npx -y zion-mcp@2.7.11 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.11 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.11 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -76,6 +79,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Bind a constant | `CREATE_CONST_BINDING` | `constantValue`, `schemaPath` |
 | Bind a formula | `CREATE_FORMULA_BINDING` | `schemaPath` |
 | Set a formula config | `SET_FORMULA_CONFIG` | `config`, `schemaPath` |
+| Set a getPageUrl function binding's target page | `SET_FUNCTION_BINDING_PAGE_URL_TARGET` | `pageId`, `schemaPath` |
 | Bind a conditional | `CREATE_CONDITIONAL_BINDING` | `schemaPath` |
 | Make a condition always or never true | `SET_CONSTANT_CONDITION` | `schemaPath`, `type` |
 | Condition on the operating system | `SET_OS_TYPE_CONDITION` | `osType`, `schemaPath` |
@@ -196,6 +200,12 @@ Set the non-databinding scalar config of an existing formula (e.g. rounding mode
 - `config` *(required)*: `object · kind: enum(GEO_DISTANCE|GEO_POINT_GET_VALUE|DECIMAL|NUMBER_FORMATTING|DURATION_FORMATTING|DURATION|TIME_GET_PART|TIME_OPERATION|GET_CURRENT_TIME|DATE_TIME_FORMATTING|RELATIVE_TIME) · per-kind: {language: enum(EN|ZH)} | {clearTrailingZeros: boolean, roundingMode: enum(HALF_EVEN|HALF_UP|HALF_DOWN|UP|DOWN|CEILING|FLOOR)} | {dateTimeUnit: enum(year|month|day|hour|minute|second|millisecond|weekday|week)} | {timeUnit: enum(day|hour|minute|second|millisecond)} | {unit: enum(METER|KILOMETER|MILE)} | {getValueType: enum(latitude|longitude)} | {timeType: enum(DATE|TIME|TIMESTAMP)} | {decimalPlaces?: integer, format: enum(THOUSANDS_SEPARATOR|PERCENT)} | {hideSuffix?: boolean, language: enum(EN|ZH)} | {direction: enum(later|before)}` — The non-databinding scalar config to apply to the formula at the path. The config kind must match the target formula; call GET_FORMULA_CONFIG_OPTIONS first to discover the exact shape and the allowed values for each field.
 - `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
+### `SET_FUNCTION_BINDING_PAGE_URL_TARGET`
+
+Set the target page of a getPageUrl function binding (the global page-link option), which binding that option leaves unset. Re-seeds the function binding's page parameters from the target page's inputs and returns argSchemaPaths — fill each with a const/option binding tool at its returned path, copied verbatim.
+- `pageId` *(required)*: `string` — Id of the target page — one of this client's pages (GET_ALL_ROOTS_INFO).
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>` — The path of the getPageUrl function binding: either the function binding itself or the data binding holding it. A data binding that concatenates several getPageUrl function bindings must be addressed down to the one to change (…/valueBinding/<index>).
+
 ### `CREATE_CONDITIONAL_BINDING`
 
 Create a conditional binding at a schema path: a value chosen by the first branch whose predicate is true. initialBranchNames seeds the branches; operation is REPLACE or CONCAT. Add more branches with INSERT_CONDITIONAL_DATA, build each branch's predicate with the condition tools below, and fill each branch value with a binding tool.
@@ -283,6 +293,6 @@ Change a sort rule's column and/or direction by its index within the filter's so
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
+npx -y zion-mcp@2.7.11 schema validate && npx -y zion-mcp@2.7.11 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

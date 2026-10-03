@@ -21,26 +21,26 @@ A response config's type is what downstream reads the result through, and only a
 ### Types
 Every `type` argument here is picked, not written: call `GET_API_SELECTABLE_TYPES` for the slot being filled and copy a returned `typeIdentifier` verbatim. A private object type belongs to the one feature that owns it and is never offered to another, so to reuse a shape some other feature owns, publish it with `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` and select the public copy. This API's own JSON body type is the exception — it is already this API's, so describe it in place with `ADD_TYPE_DEFINITION_FIELDS`. Lists are not enumerated — the nesting has no end — so a list response or input variable is a returned identifier plus `arrayLevel: 1`; the URL, header and form-body parameters hold one value, take no `arrayLevel`, and accept no list at all.
 
-> Available only on **post-type-system-refactor** projects; the daemon hard-gates every op below on pre-refactor projects, where the API-integration workspace feature does not exist. On a pre-refactor project integrate external HTTP endpoints as TPA configs (`third-party-api.md`) instead. Check `npx -y zion-mcp@2.7.8 schema load` → `typeSystem` first.
+> Available only on **post-type-system-refactor** projects; the daemon hard-gates every op below on pre-refactor projects, where the API-integration workspace feature does not exist. On a pre-refactor project integrate external HTTP endpoints as TPA configs (`third-party-api.md`) instead. Check `npx -y zion-mcp@2.7.11 schema load` → `typeSystem` first.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.8 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.11 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.8 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.8 login
+npx -y zion-mcp@2.7.11 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.11 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.8 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.8 projects search):
-npx -y zion-mcp@2.7.8 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.8 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.11 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.11 projects search):
+npx -y zion-mcp@2.7.11 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.11 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.11 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -50,6 +50,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Intent | `name` | Required `args` |
 |---|---|---|
 | List workspaces | `GET_ALL_API_WORKSPACES` | — |
+| One workspace in full (constants + their value schemaPaths) | `GET_API_WORKSPACE_DETAIL` | `workspaceId` |
 | List API endpoints | `GET_ALL_APIS_INFO` | — |
 | API detail (ids, params, responses) | `GET_API_DETAIL` | `apiId` or `schemaPath` |
 | Types one slot accepts (needs `apiId`, or `workspaceId` for a constant) | `GET_API_SELECTABLE_TYPES` | `slot` |
@@ -94,6 +95,11 @@ Return the typeIdentifiers selectable for one API type slot — an input variabl
 - `slot` *(required)*: `enum(INPUT_VARIABLE|PATH_PARAMETER|QUERY_PARAMETER|HEADER_PARAMETER|FORM_BODY_PARAMETER|JSON_BODY|RESPONSE_BODY|WORKSPACE_CONSTANT)`
 - `workspaceId`: `string` — WORKSPACE_CONSTANT only: the workspace the constant belongs to.
 
+### `GET_API_WORKSPACE_DETAIL`
+
+One workspace in full: its constants — each with the value schemaPath CREATE_CONST_BINDING writes, the only binding that slot takes — and the APIs it holds. Read it before editing a workspace or its constants. Use a workspaceId from GET_ALL_API_WORKSPACES.
+- `workspaceId` *(required)*: `string` — The workspace to read, from GET_ALL_API_WORKSPACES.
+
 ### `ADD_API_WORKSPACES`
 
 Create one or more API workspaces (name + description). Add their constants and APIs afterwards.
@@ -101,7 +107,7 @@ Create one or more API workspaces (name + description). Add their constants and 
 
 ### `ADD_API_WORKSPACE_CONSTANTS`
 
-Add shared constants (base URLs, API keys, tokens) to a workspace; its APIs reference them instead of inlining secrets.
+Add shared constants (base URLs, API keys, tokens) to a workspace; its APIs reference them instead of inlining secrets. Each one is created with no value: write it with CREATE_CONST_BINDING at the value schemaPath the result echoes. That slot takes a literal and nothing else — no option, formula or conditional binding, matching the editor's constants table, which offers no variable picker there. To let a request use a value the project already holds (a secret, say), bind it on the API's parameter or URL instead.
 - `items` *(required)*: `array<{arrayLevel?: integer, name: string, type: string}>`
   - `items[].arrayLevel` — How many list levels wrap the picked type: 0 = the type itself (default), 1 = a list of it, 2 = a list of lists. The query enumerates base types only, since the nesting has no end, so a list is asked for here and never by bracketing the identifier. The optional wrapper of the identifier passed alongside becomes the list's own: pick `null|t` for a list that may be absent, the concrete `t` for one that may not.
   - `items[].type` — copy a `typeIdentifier` GET_API_SELECTABLE_TYPES returns for this slot, verbatim. What a slot accepts depends on where it sits, so never assemble one: an id that does not exist, or a type the slot does not take, is rejected. A `typeIdentifier` echoed by a create or copy call counts as copied, not assembled. Where the slot takes a list, say so with `arrayLevel` rather than by writing brackets: the identifier stays exactly as the query returned it.
@@ -169,6 +175,6 @@ Declare input variables on an API — the values a caller supplies, bindable int
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.8 schema validate && npx -y zion-mcp@2.7.8 project sync-backend
+npx -y zion-mcp@2.7.11 schema validate && npx -y zion-mcp@2.7.11 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

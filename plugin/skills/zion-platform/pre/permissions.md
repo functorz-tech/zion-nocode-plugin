@@ -87,22 +87,22 @@ If you stop short of any of these, say so explicitly and name which grants are s
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.11 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.12 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.11 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.11 login
+npx -y zion-mcp@2.7.12 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.12 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.11 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.11 projects search):
-npx -y zion-mcp@2.7.11 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.11 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.12 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.12 projects search):
+npx -y zion-mcp@2.7.12 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.12 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.11 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.12 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -174,6 +174,6 @@ Seed a role's conditional check on one action flow / AI agent, on top of the all
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.11 schema validate && npx -y zion-mcp@2.7.11 project sync-backend
+npx -y zion-mcp@2.7.12 schema validate && npx -y zion-mcp@2.7.12 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

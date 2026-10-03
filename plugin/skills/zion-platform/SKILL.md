@@ -9,9 +9,9 @@ description: >-
 Before reading platform guidance, identify the active project and pin it when needed:
 
 ```bash
-npx -y zion-mcp@2.7.11 projects search --projectName "My App"
-npx -y zion-mcp@2.7.11 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.11 schema load
+npx -y zion-mcp@2.7.12 projects search --projectName "My App"
+npx -y zion-mcp@2.7.12 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.12 schema load
 ```
 
 Read the `typeSystem` field returned by `schema load` exactly, then route without asking the user:
@@ -23,4 +23,4 @@ If schema loading fails, `typeSystem` is missing, or its value is unknown, stop 
 
 Repeat this detection whenever the active project changes.
 
-> **Always invoke the CLI exactly as written above** — via `npx -y zion-mcp@2.7.11` — never bare `zion-mcp`, even though `--help` prints its own name that way. The `@2.7.11` version pin runs this plugin's exact published build, so a globally-installed `zion-mcp` (or `zion`) on `PATH` can't shadow it.
+> **Always invoke the CLI exactly as written above** — via `npx -y zion-mcp@2.7.12` — never bare `zion-mcp`, even though `--help` prints its own name that way. The `@2.7.12` version pin runs this plugin's exact published build, so a globally-installed `zion-mcp` (or `zion`) on `PATH` can't shadow it.

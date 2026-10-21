@@ -79,6 +79,25 @@ Enum types are created and edited via the 'type' plugin, not here. To use an enu
 ### Geographic Location
 Use s:p:geo_point for coordinates. Never split into separate latitude/longitude fields. A s:p:geo_point field auto-generates a companion s:p:decimal hack field named "fz_distance_from_<apiName>", where <apiName> is the geo_point's apiName (may differ from its displayName). At request time it returns the distance from the stored geo_point to the user-supplied location in the request. Treat it as a distance-calculation hack — future migration: this will be replaced by formula fields.
 
+### Data Views
+A view is a saved SELECT over this project's tables, exposed as a READ-ONLY table of its own: it has a displayName like any table, it shows up in reads and data bindings, and it is queried the same way. Reach for one when the SAME joined or aggregated result is needed in more than one place — "Number of orders and total amount per user" — so the definition lives once instead of being rebuilt in every query, component and action flow that needs it.
+
+A view is a definition, not a copy: it holds no data of its own and is recomputed on every read, so it is never stale. It costs what the query costs, every time it is read.
+
+Write the SQL against the API (snake_case) names, quoted and case-sensitive — the same names GET_TABLES_INFO reports. Everything else on this plugin is addressed by displayName; the SQL body is the one place that is not, because it is PostgreSQL rather than a tool argument.
+
+Always ANALYZE_VIEW_SQL first and fix what it reports before creating or updating a view. It returns the exact columns the view would expose, so it is also how you learn what a view you are about to build on actually gives you. Creating or updating a view with SQL that does not analyse is rejected, not stored.
+
+You CANNOT:
+- Write through a view. There is no insert, update or delete, and no by-id lookup: a view has no primary key.
+- Use the whole of SQL. One SELECT only: JOIN with ON, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT, UNION, CTEs, CASE, COALESCE, casts and the aggregate functions. NOT available: subqueries, window functions, query parameters, and anything that is not a single SELECT statement.
+- Parameterise a view. It is a stored definition with no request context, so there is no "current user" inside it and no placeholder to bind. Expose the user column and filter when you QUERY the view instead.
+- Omit a column alias. Every output column needs an explicit `AS alias`, and that alias is the field name the view exposes.
+- Read an IMAGE_LIST column. Every other type works, but a media column is read under its database name — an IMAGE/VIDEO/FILE field called "avatar" is `avatar_id` in the SQL, and aliasing it `AS cover_id` exposes it as a media field named "cover". Keep the `_id` suffix or it comes back as a plain number.
+- Delete a view another view still reads. Delete or rewrite the reader first.
+
+Views take effect online only after "Sync Backend", like every other data-model change.
+
 ### Constraints
 Only unique constraints supported. Constraint name: lowercase English snake_case, no uppercase. Reference fields by their displayName — for a relation's foreign key use the generated FK field ("user_id"). Uniqueness is fixed when a field is created and cannot be turned on afterwards (existing rows could already hold duplicates), so to make an existing field unique, add a constraint over it. Use a constraint to span multiple fields (composite unique): list the fields' displayNames. Unique constraints are also the only DB-enforced invariant writers can lean on for atomic insert-if-absent / toggle semantics (insert with on_conflict): whenever the design has "at most one row per X" semantics (a join/like/save table, an idempotency key), create the unique constraint up front — read-check-then-insert cannot be made race-safe without it.
 
@@ -86,22 +105,22 @@ A relation's generated FK carries two names, and which one a call wants depends 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.13 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.14 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.13 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.13 login
+npx -y zion-mcp@2.7.14 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.14 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.13 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.13 projects search):
-npx -y zion-mcp@2.7.13 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.13 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.14 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.14 projects search):
+npx -y zion-mcp@2.7.14 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.14 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.13 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.14 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -130,14 +149,19 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Enable vector search on a TEXT field | `ADD_TABLE_EXTENSION` | `fieldDisplayName`, `tableDisplayName` |
 | Retune vector search (e.g. change model) | `UPDATE_TABLE_EXTENSION` | `customEmbeddingId`, `fieldDisplayName`, `tableDisplayName` |
 | Disable vector search | `DELETE_TABLE_EXTENSION` | `fieldDisplayName`, `tableDisplayName` |
+| Inspect views | `GET_VIEWS_INFO` | — |
+| Dry-run a view definition | `ANALYZE_VIEW_SQL` | `sql` |
+| Create read-only views | `ADD_VIEWS` | `items` |
+| Rename a view / replace its SQL | `UPDATE_VIEWS` | `items` |
+| Delete views | `DELETE_VIEWS` | `viewDisplayNames` |
 
 ## Worked example: create a `post` table
 
 Read the field-type picker first, then copy its `typeIdentifier` values verbatim:
 
 ```bash
-npx -y zion-mcp@2.7.13 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
-npx -y zion-mcp@2.7.13 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.7.14 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
+npx -y zion-mcp@2.7.14 schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
     {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
       {"apiName":"title","displayName":"title","typeIdentifier":"s:p:string","required":true,"defaultValue":""},
@@ -246,7 +270,7 @@ Remove a table's vector-search extension. The generated embedding columns and th
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.13 schema validate && npx -y zion-mcp@2.7.13 project sync-backend
+npx -y zion-mcp@2.7.14 schema validate && npx -y zion-mcp@2.7.14 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.
 
@@ -256,7 +280,7 @@ npx -y zion-mcp@2.7.13 schema validate && npx -y zion-mcp@2.7.13 project sync-ba
 - The picker lists **primitives and enums only**, and returns the *concrete* type: `required` decides nullability, so never pass a `|null` union. A type it did not offer is rejected.
 - **Destructive ops** (`DELETE_TABLES`, `DELETE_FIELDS_AND_RELATIONS`, `DELETE_CONSTRAINTS`) lose data; list what will be deleted and warn the user.
 - **Type changes** aren't editable: delete + recreate the column.
-- If results look stale, run `npx -y zion-mcp@2.7.13 schema reload`.
+- If results look stale, run `npx -y zion-mcp@2.7.14 schema reload`.
 - **Enums / custom types** are out of scope here — see `schema-type.md`.
 
 ## Reading & writing deployed rows (runtime backend)
@@ -264,10 +288,10 @@ npx -y zion-mcp@2.7.13 schema validate && npx -y zion-mcp@2.7.13 project sync-ba
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-npx -y zion-mcp@2.7.13 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-npx -y zion-mcp@2.7.13 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-npx -y zion-mcp@2.7.13 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-npx -y zion-mcp@2.7.13 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+npx -y zion-mcp@2.7.14 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.7.14 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+npx -y zion-mcp@2.7.14 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+npx -y zion-mcp@2.7.14 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
 - `insert` must supply every NOT-NULL column; object keys are the column **apiName** (what the schema read tools report).
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.

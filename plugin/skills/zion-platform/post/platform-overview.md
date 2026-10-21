@@ -18,7 +18,21 @@ Zion decouples application systems into three isolated yet bound layers:
 
 ## 2. The Mental Model & Engineering Workflow
 
-Developing with Zion requires a rigorous **data-first** engineering approach. LLMs must outline solutions in this exact order:
+Building on Zion happens at two levels, and they are not interchangeable. Level one decides **what this release is**; level two builds it. Outlining a solution straight into an ER diagram skips the decision that sets how large that diagram should be, which is what produces a project where every part is half-finished at once instead of one part working.
+
+### 2.1 Level One — Scope The Release
+
+A request names a product; it does not name a first release. Deciding that is your job. When a request describes a whole product — typically the first message of a new project — cut the work into releases before you model any data; a change to an app that already exists goes straight to level two:
+
+* **MVP**: one role, one happy path, the fewest tables that make it real. It must open and demonstrate the idea, not sketch every screen.
+* **1.0**: the secondary flows around that path.
+* **2.0**: admin, operations, analytics.
+
+State the cut in one line before you build anything, in the language the user writes in — e.g. "MVP: a customer browses products and places an order; membership balance and points come in 1.0." A stated cut gets corrected in one sentence; an unstated one is discovered when the user asks where the rest went. Then carry only the MVP into level two, and name what you deferred rather than dropping it silently: work that disappears without being named reads as you having missed half the request.
+
+### 2.2 Level Two — Build That Release Data-First
+
+Within the release you just scoped — never across the whole product — Zion requires a rigorous **data-first** engineering approach. Outline that release in this exact order:
 
 1. **Data Modeling**: Design the Entity-Relationship (ER) diagram, database tables, constraints, and relationships first.
 2. **UI Layout**: Construct nested structural containers (Views) and map static display/input components onto them.
@@ -98,7 +112,7 @@ Server-side visual execution graphs used to perform robust operations. They are 
 * Webhooks (third-party external integrations).
 * Database Triggers (automatically runs on `INSERT`/`UPDATE`/`DELETE` of target tables).
 
-**Node types available inside an Actionflow:** Database (query/insert/update/delete on a table), Call workspace API, Run AI (async only), Run Actionflow (sub-flow; sync cannot call async), Set Variable, Permissions (grant/revoke roles), Run Code (JavaScript), Condition (branching), Loop (iterate a list). Current-user and file/media operations are preset integration nodes, not built-in node types. The editor additionally offers a dynamic, server-managed catalog of **preset integration nodes** (the `TEMPLATE_CODE` node type — published templates such as SMS sending or video/AI generation) whose set changes over time, so confirm the current options in the editor or docs rather than assuming a fixed provider.
+**Node types available inside an Actionflow:** the authoritative list is the flow's add-node menu at the position — read it with the actionflow plugin and pass that entry's `node`, rather than choosing from a fixed list; an entry it disables is refused with that reason. Its entries span database reads and writes, Call workspace API, Run AI (async only), calling another flow (sync cannot call async), variables, permissions, JavaScript and branching or loops. Current-user and file/media operations are preset integration nodes, not built-in node types — the menu carries the deployment's `TEMPLATE_CODE` entries for them (SMS, video/AI generation, …), whose set changes over time. There is no built-in `CURRENT_USER` / `FILES` / `SMS` node type.
 
 **Execution modes**: In synchronous flows, all nodes in one synchronous Actionflow invocation execute inside a single database transaction; any node failure rolls back every DB write from that invocation, and the caller blocks waiting for the result. Asynchronous flows are fire-and-forget; only the failing node's DB changes roll back; required for AI agents and video generation. Both modes share a **per-flow total timeout** governed by `ACTION_FLOW_TIMEOUT_MILLISECONDS` — 15 s on free-tier servers, 10 min (600 s) on paid tiers. The budget is for the whole flow, not per node, and a flow may override it with its own `timeout`, so a long run that succeeded tells you nothing about which tier you are on.
 
@@ -156,7 +170,7 @@ Mirror, Preview and Publish are things the USER drives from the editor — you c
 ### Deployment Targets
 Each project can publish to three independent client app targets, all sharing the same backend:
 * **Web**: Standard browser application with a unique URL.
-* **Mobile**: Native iOS/Android app.
+* **Mobile**: Native iOS app. Android is not available yet.
 * **WeChat Mini Program (微信小程序)**: Mini program running inside the WeChat app. Requires a registered WeChat Mini Program account (AppID) linked to the project.
 
 ### WeChat Mini Program Lifecycle
@@ -169,6 +183,7 @@ The mini program publish flow is distinct from web/mobile:
 ### Payment Gateways
 * **WeChat Pay**: Native WeChat Pay v3 API. Requires merchant ID and API credentials.
 * **Alipay**: Alipay payment gateway.
+* **Airwallex**: Cards and local payment methods, one-time and subscriptions. Not available on the WeChat Mini Program, and only offered where Airwallex is enabled for the project.
 
 ### Authentication Providers
 * WeChat (OAuth via WeChat Open Platform)

@@ -45,24 +45,27 @@ A FORMULA or CONDITIONAL value is built in several steps at the value's schema p
 ### Page links
 The global page-link option binds a getPageUrl function binding with no target page, so the link points nowhere until you call `SET_FUNCTION_BINDING_PAGE_URL_TARGET` at the same schema path with the target page's id. Fill each parameter it returns under argSchemaPaths with an OPTION / CONST_VALUE binding at that path, copied verbatim.
 
+### Lists composed item by item
+To give a list slot a literal list, bind the Custom > Array option at its schema path, then append items with `ADD_CUSTOM_ARRAY_BINDING_ITEMS` — a binding at an item index that does not exist yet is rejected, so an empty custom array can only grow through that tool. Fill each item it returns under itemSchemaPaths with an OPTION / CONST_VALUE binding, copied verbatim. For a list of lists, each item is a custom array of its own: call `ADD_CUSTOM_ARRAY_BINDING_ITEMS` again at the item's path. Remove items with `DELETE_CUSTOM_ARRAY_BINDING_ITEMS`.
+
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.13 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.14 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.13 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.13 login
+npx -y zion-mcp@2.7.14 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.14 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.13 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.13 projects search):
-npx -y zion-mcp@2.7.13 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.13 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.14 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.14 projects search):
+npx -y zion-mcp@2.7.14 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.14 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.13 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.14 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -80,6 +83,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Bind a formula | `CREATE_FORMULA_BINDING` | `schemaPath` |
 | Set a formula config | `SET_FORMULA_CONFIG` | `config`, `schemaPath` |
 | Set a getPageUrl function binding's target page | `SET_FUNCTION_BINDING_PAGE_URL_TARGET` | `pageId`, `schemaPath` |
+| Append items to a custom array | `ADD_CUSTOM_ARRAY_BINDING_ITEMS` | `schemaPath` |
+| Delete items from a custom array | `DELETE_CUSTOM_ARRAY_BINDING_ITEMS` | `indexes`, `schemaPath` |
 | Bind a conditional | `CREATE_CONDITIONAL_BINDING` | `schemaPath` |
 | Make a condition always or never true | `SET_CONSTANT_CONDITION` | `schemaPath`, `type` |
 | Condition on the operating system | `SET_OS_TYPE_CONDITION` | `osType`, `schemaPath` |
@@ -206,6 +211,18 @@ Set the target page of a getPageUrl function binding (the global page-link optio
 - `pageId` *(required)*: `string` — Id of the target page — one of this client's pages (GET_ALL_ROOTS_INFO).
 - `schemaPath` *(required)*: `array<{index: integer} | {key: string}>` — The path of the getPageUrl function binding: either the function binding itself or the data binding holding it. A data binding that concatenates several getPageUrl function bindings must be addressed down to the one to change (…/valueBinding/<index>).
 
+### `ADD_CUSTOM_ARRAY_BINDING_ITEMS`
+
+Append empty items to a custom-array binding (a list literal composed item by item, created by binding the Custom > Array option) — the only way to grow one, including an empty one. Returns itemSchemaPaths — fill each with a const/option binding tool at its returned path, copied verbatim; an item that is itself a list is grown by calling this tool again at its item path.
+- `count`: `integer` — How many items to append. Defaults to 1.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>` — The path of the custom-array binding (a data binding whose valueBinding has kind customArray), or of that valueBinding itself. An item of a nested array is a custom-array binding of its own: address it by the item's schema path.
+
+### `DELETE_CUSTOM_ARRAY_BINDING_ITEMS`
+
+Delete items from a custom-array binding by index; later items shift down.
+- `indexes` *(required)*: `array<integer>` — 0-based indexes of the items to delete.
+- `schemaPath` *(required)*: `array<{index: integer} | {key: string}>` — The path of the custom-array binding (a data binding whose valueBinding has kind customArray), or of that valueBinding itself. An item of a nested array is a custom-array binding of its own: address it by the item's schema path.
+
 ### `CREATE_CONDITIONAL_BINDING`
 
 Create a conditional binding at a schema path: a value chosen by the first branch whose predicate is true. initialBranchNames seeds the branches; operation is REPLACE or CONCAT. Add more branches with INSERT_CONDITIONAL_DATA, build each branch's predicate with the condition tools below, and fill each branch value with a binding tool.
@@ -293,6 +310,6 @@ Change a sort rule's column and/or direction by its index within the filter's so
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.13 schema validate && npx -y zion-mcp@2.7.13 project sync-backend
+npx -y zion-mcp@2.7.14 schema validate && npx -y zion-mcp@2.7.14 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

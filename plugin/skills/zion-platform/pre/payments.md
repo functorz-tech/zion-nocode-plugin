@@ -7,7 +7,7 @@ Zion's payment system is built around a developer-owned **order table** plus a s
 1. The user upgrades the project to the Pro plan or higher (payments are gated by plan; an expired plan breaks live payments and blocks publishing).
 2. Create the **order table** (see below) with its required fields.
 3. Call ACTIVATE_PAYMENT with the order table's display name. Read `overview.project` first — it reports whether payments are already enabled and which types are active, and the order table is fixed by the first activation and ignored afterwards. The call appends the type's generated flows/callbacks/jobs and grants the logged-in user role permission to pay with it; a first activation also inserts the payment tables, which every role then carries in its table permissions though only the logged-in user role can read them. It names what it created; say so in your answer, since in AUTO_ACCEPT the user was not asked.
-4. Configure the gateway credentials — WeChat Pay (merchant ID, APIv2 key, the linked Mini Program AppID, plus the apiclient_cert.p12 for refunds) and/or Alipay (app ID and an RSA2 key pair) — plus brand name, logo, slogan.
+4. Configure the gateway credentials — WeChat Pay (merchant ID, APIv2 key, the linked Mini Program AppID, plus the apiclient_cert.p12 for refunds) and/or Alipay (app ID and an RSA2 key pair) and/or Airwallex (client ID, API key and webhook secret) — plus brand name, logo, slogan.
 5. Confirm the auto-generated payment/refund callback flows are wired.
 
 ### The Order Table (you design this — follow database conventions)
@@ -43,12 +43,18 @@ The flow has a built-in "parse payment result" code block that outputs four valu
 Never let the client decide the price. Order creation must run server-side:
 1. Frontend triggers a backend Actionflow passing only identifiers (e.g. `product_id`, quantity) — never the price.
 2. The flow queries the product/price server-side, computes the authoritative amount, inserts a new order row with status `pending`, and returns the generated `orderId` and verified amount.
-3. The frontend maps the *returned* `orderId` and amount into the WeChat Pay / Alipay payment action. This is the Zero-Trust pattern: the price the customer is charged is the one the server computed and stored on the order, not anything the browser sent.
+3. The frontend maps the *returned* `orderId` and amount into the WeChat Pay / Alipay / Airwallex payment action. This is the Zero-Trust pattern: the price the customer is charged is the one the server computed and stored on the order, not anything the browser sent.
 
 ### Amounts & Currency
 The WeChat Pay and Alipay payment actions take the amount in **yuan (元) as a `DECIMAL` with at most two decimal places, and it must be greater than 0.01** — pass the order's server-computed price directly; do NOT convert to cents/分.
 
-### Recurring Payments (Alipay only)
+### Airwallex (only where enabled for the project)
+Airwallex is activated like any other type and takes both one-time payments and subscriptions. It generates two backend Actionflows; don't delete or rename them:
+1. **Airwallex Payment** — receives every Airwallex webhook as `fz_payment_callback_input` and branches on the event type: payment status changed (`payment_intent.succeeded` / `payment_intent.cancelled`), refund (`refund.accepted` / `refund.failed`), subscription status changes, and `invoice.finalized`. In the payment branch the built-in "Sync payment status" block outputs `orderId`, `paymentStatus` (`SUCCESSFUL` or `CANCELLED`) and `alreadyProcessed`; in the refund branch "Sync refund status" outputs `orderId`, `status` (`REFUNDED` or `FAILED`) and `alreadyProcessed`. Put fulfillment after those blocks under the same idempotency contract: act only on the expected status AND `alreadyProcessed == false`.
+2. **Airwallex Subscription Renewal** — called by Airwallex Payment with the invoice id to create the order and payment for a subscription renewal.
+Airwallex amounts are decimals in the currency's major unit (10.00, not 1000): pass the order's server-computed decimal price directly.
+
+### Recurring Payments (Alipay)
 Alipay supports subscriptions via a signed agreement. The start action takes `orderId`, a price (Alipay caps recurring amounts at ¥100), a product name, a deduction interval (≥ 7 days), and an Alipay scene code (a user can subscribe to the same scene only once); the cancel action takes the recurring-payment row id. Deductions run in the auto-generated daily loop flow: for each due agreement you must create a NEW order inside the loop and bind its id to the deduction node's `orderId` input. Note: a full Alipay refund does not re-trigger the payment flow.
 
 ### Scope Note
@@ -56,22 +62,22 @@ ACTIVATE_PAYMENT turns the module on one type at a time, and the actionflow plug
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.13 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.14 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.13 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.13 login
+npx -y zion-mcp@2.7.14 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.14 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.13 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.13 projects search):
-npx -y zion-mcp@2.7.13 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.13 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.14 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.14 projects search):
+npx -y zion-mcp@2.7.14 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.14 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.13 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.14 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -102,6 +108,6 @@ Activate one payment type on this project. Read overview.project first: it repor
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.13 schema validate && npx -y zion-mcp@2.7.13 project sync-backend
+npx -y zion-mcp@2.7.14 schema validate && npx -y zion-mcp@2.7.14 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

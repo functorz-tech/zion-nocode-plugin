@@ -50,7 +50,9 @@ manually reviewed).
 
 ### opencode
 
-opencode has no plugin marketplace; it reads the `zion` MCP server from an
+Ask opencode in the chat to install the Zion plugin from this repo's URL.
+
+To wire it by hand instead: opencode reads the `zion` MCP server from an
 `opencode.json` (its `mcp` shape differs from `mcp.json`). This repo ships one at its root — copy it
 into your project, or merge its `mcp` block into your existing config:
 
@@ -67,7 +69,8 @@ into your project, or merge its `mcp` block into your existing config:
 }
 ```
 
-You get Zion's tools; the guided `zion-platform` skill is plugin-only (Claude Code, Codex, Cursor).
+Then link the `zion-platform` skill from `plugin/skills/` into `~/.config/opencode/skills/` (or a project's
+`.opencode/skills/`).
 
 ### Other MCP-compatible tools (Windsurf, Cline, Claude Desktop, Qoder, Trae, …)
 

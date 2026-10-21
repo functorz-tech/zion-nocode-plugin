@@ -23,6 +23,8 @@ Data permissions are configured coarse → fine:
 
 Read before writing: `GET_ROLE_DETAIL`, naming every role the task will edit; the role names are already in `GET_PROJECT_OVERVIEW`. It reports each table by exception — the operations granted, the ones under `rowConditions` whose row condition has been narrowed, and `restrictedColumns` only where a grant covers less than the whole table, so an operation listed as granted and mentioned nowhere else is open on every column and every row. Tables the role cannot touch at all are named together in `tablesWithNoGrants`. Pass `blocks` when the task is about one block (the table block is nearly the whole payload). It does not carry the row conditions' schema paths — when you are narrowing one, read `GET_TABLE_PERMISSION` instead: it names the tables you are about to change, reports each operation's condition path, and satisfies the same gate, so the path arrives in the call right before the one that uses it. Edit with `ADD_ROLES`, `UPDATE_ROLE`, `DELETE_ROLES` and the per-block setters `UPDATE_ROLE_TABLE_PERMISSION`, `UPDATE_ROLE_ACTION_FLOW_PERMISSION`, `UPDATE_ROLE_ZAI_PERMISSION`, `UPDATE_ROLE_PAYMENT_PERMISSION`, `UPDATE_ROLE_API_PERMISSION` for workspace HTTP APIs. Account insert/delete is unavailable, and `id` is pinned into every table SELECT grant.
 
+Views (the read-only saved queries the database plugin manages) are granted separately with `UPDATE_ROLE_VIEW_PERMISSION`: only select / count / aggregate exist, each with its column set and row condition, and a view no role has been granted cannot be queried by anyone. `GET_VIEW_PERMISSION` reports a view's condition paths the way `GET_TABLE_PERMISSION` does for tables.
+
 `allowAll` on `apiPermission`, `actionflowPermission` or `zAiPermission` also covers resources added later — prefer explicit allow-lists unless broad access is intentional.
 
 **Role, or a field on Account?** Use a role for static functional boundaries: who may run a flow, read a table, see a column. Add a field on the Account table for per-user state: VIP status, nickname, bio.
@@ -87,22 +89,22 @@ If you stop short of any of these, say so explicitly and name which grants are s
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.13 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.7.14 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.13 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.13 login
+npx -y zion-mcp@2.7.14 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.14 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.13 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.13 projects search):
-npx -y zion-mcp@2.7.13 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.13 schema load                               # warm the schema session
+npx -y zion-mcp@2.7.14 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.14 projects search):
+npx -y zion-mcp@2.7.14 project set-current --projectExId <exId>
+npx -y zion-mcp@2.7.14 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.13 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.7.14 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -118,6 +120,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Rename a role | `UPDATE_ROLE` | `roleName` |
 | Delete roles | `DELETE_ROLES` | `roleNames` |
 | Grant/revoke table ops (per-column) | `UPDATE_ROLE_TABLE_PERMISSION` | `roleName` |
+| One role on named views, with condition paths | `GET_VIEW_PERMISSION` | `roleName`, `viewDisplayNames` |
+| Grant/revoke view select/count/aggregate (per-column) | `UPDATE_ROLE_VIEW_PERMISSION` | `roleName` |
 | Allow-list action flows | `UPDATE_ROLE_ACTION_FLOW_PERMISSION` | `roleName` |
 | Allow-list AI agents | `UPDATE_ROLE_ZAI_PERMISSION` | `roleName` |
 | Allow payment actions | `UPDATE_ROLE_PAYMENT_PERMISSION` | `roleName` |
@@ -174,6 +178,6 @@ Seed a role's conditional check on one action flow / AI agent, on top of the all
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.13 schema validate && npx -y zion-mcp@2.7.13 project sync-backend
+npx -y zion-mcp@2.7.14 schema validate && npx -y zion-mcp@2.7.14 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

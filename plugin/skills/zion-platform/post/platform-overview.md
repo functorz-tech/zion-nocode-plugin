@@ -193,4 +193,4 @@ The mini program publish flow is distinct from web/mobile:
 * Email/password
 
 ### Timezone & Locale
-Default timezone: **UTC+08:00** (China Standard Time). Default UI language: Simplified Chinese (zh-CN).
+Product default timezone: **Asia/Shanghai** (UTC+08:00). A project can override it; the zone actually in effect is `timezone` in GET_PROJECT_OVERVIEW. Default UI language: Simplified Chinese (zh-CN).

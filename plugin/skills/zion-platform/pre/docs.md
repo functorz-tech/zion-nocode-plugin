@@ -82,6 +82,7 @@ Format: - {relative_path}: {page_title}
   - /docs/design/concept/layout_concepts: 布局系统
   - /docs/design/concept/ui_organization_model: 理解 Zion 的 UI 组织方式
   - /docs/design/guide/studio_basics: 搭建第一个页面
+  - /docs/design/guide/theme: 使用设计主题
   - /docs/design/guide/using_custom_components: 使用自定义组件
   - /docs/design/reference/breakpoints: 断点规格
   - /docs/design/reference/design_panel: 设计面板
@@ -183,8 +184,8 @@ Format: - {relative_path}: {page_title}
 Read-only — no schema session needed.
 
 ```bash
-npx -y zion-mcp@2.7.14 docs search --query "how to configure wechat pay / alipay payments"
-npx -y zion-mcp@2.7.14 docs get-page --path "/03_data/01_database_basics"
+npx -y zion-mcp@2.7.15 docs search --query "how to configure wechat pay / alipay payments"
+npx -y zion-mcp@2.7.15 docs get-page --path "/03_data/01_database_basics"
 ```
 
 `docs search` returns `{ path, title, url }` ranked by relevance; `url` is a public HTTPS link you can cite. Pass a returned `path` to `docs get-page` to read the full markdown. Search before answering how-to questions, and ground every claim in the retrieved page.

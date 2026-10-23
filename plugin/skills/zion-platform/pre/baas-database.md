@@ -64,8 +64,15 @@ Window functions (ROW_NUMBER, RANK, DENSE_RANK, NTH_VALUE) are available in the 
 window-frame inputs.
 
 order_by supports: direct columns ({title:asc}); related 1:1 records ({author:{name:desc}});
-aggregates of N:1 ({post_tags_aggregate:{count:desc}}); and text vector-similarity sort when the
-TEXT_COLUMN_VECTOR_SORT extension is applied.
+aggregates of N:1 ({post_tags_aggregate:{count:desc}}); text vector-similarity sort when the
+TEXT_COLUMN_VECTOR_SORT extension is applied; and BM25 keyword relevance
+({fz_content_bm25:{query:"..."}}) when that TEXT column carries a BM25 index. BM25 returns
+only rows that match, most relevant first, so a page can be shorter than limit and a query
+matching nothing returns no rows; an empty or whitespace query orders by id instead. Not
+available for ordering inside window functions. The same index adds
+fz_content_bm25_score(query) (relevance, higher is better, 0 for a non-match) and
+fz_content_bm25_snippet(query, max_words, min_words, max_fragments, start_sel, stop_sel)
+(an excerpt with matches wrapped in <b>…</b>; selecting it on a list needs limit <= 100).
 
 ## App-user authentication (for the frontend you generate)
 The deployed app's end-users obtain a JWT by logging in / registering against the same GraphQL API;
@@ -116,8 +123,8 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-npx -y zion-mcp@2.7.15 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-npx -y zion-mcp@2.7.15 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.8.0 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+npx -y zion-mcp@2.8.0 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
 `runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 

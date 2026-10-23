@@ -90,22 +90,22 @@ A relation's generated FK carries two names, and which one a call wants depends 
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.7.15 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.0 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.7.15 whoami                                    # check auth; if needed: npx -y zion-mcp@2.7.15 login
+npx -y zion-mcp@2.8.0 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.0 login
 # create a NEW project (auto-pins it; its pre/post type-system state follows the account rollout):
-npx -y zion-mcp@2.7.15 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.7.15 projects search):
-npx -y zion-mcp@2.7.15 project set-current --projectExId <exId>
-npx -y zion-mcp@2.7.15 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.0 project create --projectName "My App"
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.0 projects search):
+npx -y zion-mcp@2.8.0 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.0 schema load                               # warm the schema session
 ```
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.7.15 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.0 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -145,8 +145,8 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 Read the field-type picker first, then copy its `typeIdentifier` values verbatim:
 
 ```bash
-npx -y zion-mcp@2.7.15 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
-npx -y zion-mcp@2.7.15 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.8.0 schema tool-call --toolCalls '[{"name":"GET_TABLE_FIELD_SELECTABLE_TYPES","args":{}}]'
+npx -y zion-mcp@2.8.0 schema tool-call --toolCalls '[
   {"name":"ADD_TABLES","args":{"items":[
     {"tableDisplayName":"post","tableApiName":"post","relations":[],"fields":[
       {"apiName":"title","displayName":"title","typeIdentifier":"STRING","required":true,"defaultValue":""},
@@ -156,7 +156,7 @@ npx -y zion-mcp@2.7.15 schema tool-call --toolCalls '[
 ]'
 ```
 
-A BM25 index exists to be ordered by: declaring one on a TEXT field mints a `<field>_bm25` order-by field on the project GraphQL API, which is what ranks rows for a keyword search at runtime (`baas-database.md`). Only TEXT fields are indexable, a field carries at most one index per type, and the declaration is refused if a column already holds the `<field>_bm25` name. The parameters are frozen once it exists — retuning `k1`, `b`, or `textConfig` means `DELETE_DATABASE_INDEX` and declaring it again — and deleting the field drops its indexes with it. `GET_TABLES_INFO` reports what a table already carries. Vector search below is the other half: BM25 ranks the words that are there, embeddings match meaning.
+A BM25 index exists to be ordered by: declaring one on a TEXT field mints a `fz_<field>_bm25` order-by field on the project GraphQL API, which is what ranks rows for a keyword search at runtime, plus `fz_<field>_bm25_score` and `fz_<field>_bm25_snippet` fields for the relevance and a highlighted excerpt of each row (`baas-database.md`). Only TEXT fields are indexable, and a field carries at most one index per type; the `fz_` prefix is reserved, so these names never collide with a user field. The parameters are frozen once it exists — retuning `k1`, `b`, or `textConfig` means `DELETE_DATABASE_INDEX` and declaring it again — and deleting the field drops its indexes with it. `GET_TABLES_INFO` reports what a table already carries. Vector search below is the other half: BM25 ranks the words that are there, embeddings match meaning.
 
 ## Arguments (generated from ztype)
 
@@ -220,14 +220,18 @@ Remove unique constraints from a table by constraint name.
 - `constraints` *(required)*: `array<{constraintName: string, tableDisplayName: string}>`
 
 ### `ADD_DATABASE_INDEX`
+
+Declare a database index on a table field. indexType 'BM25' ranks a TEXT field by keyword relevance, queryable through the fz_<field>_bm25 order-by field of the project GraphQL API, with fz_<field>_bm25_score and fz_<field>_bm25_snippet fields for each row's relevance and a highlighted excerpt; use it when the app needs keyword search rather than semantic search. Only matching rows are returned, most relevant first, so a result set can be shorter than the limit and a query matching nothing returns no rows; an empty query orders by id. An index is addressed by the field it covers, and its parameters are fixed once it exists, so changing them means deleting it and declaring it again.
 - `b`: `number` — BM25 length normalization, 0.0-1.0; engine default 0.75.
 - `fieldDisplayName` *(required)*: `string` — Display name of the field to build the index on.
-- `indexType` *(required)*: `enum(BM25)` — BM25 ranks a TEXT field by keyword relevance, queryable through the <field>_bm25 order-by field of the project GraphQL API.
+- `indexType` *(required)*: `enum(BM25)` — BM25 ranks a TEXT field by keyword relevance, queryable through the fz_<field>_bm25 order-by field of the project GraphQL API. Only matching rows are returned, most relevant first, so a result set can be shorter than the limit and a query matching nothing returns no rows. An empty query orders by id instead.
 - `k1`: `number` — BM25 term-frequency saturation, 0.1-10.0; engine default 1.2.
 - `tableDisplayName` *(required)*: `string`
-- `textConfig` *(required)*: `enum(SIMPLE|ENGLISH|CHINESE)` — How the field's text is split into searchable terms. SIMPLE lowercases and splits on non-word characters with no stemming or stop-word removal — the safe pick for codes, identifiers, names, and mixed or unknown languages. ENGLISH adds English stemming and stop words, so 'running' matches 'run'. CHINESE segments with zhparser, which has no whitespace word boundaries to rely on.
+- `textConfig` *(required)*: `enum(SIMPLE|AFRIKAANS|ARABIC|ARMENIAN|BASQUE|CATALAN|DANISH|DUTCH|ENGLISH|ESTONIAN|… 44 total)` — How the field's text is split into searchable terms, named after the PostgreSQL text search configuration it uses. SIMPLE lowercases and splits on non-word characters with no stemming or stop-word removal — the safe pick for codes, identifiers, names, and mixed or unknown languages, and the honest pick for a language not listed here. The Snowball-stemmed choices (ARABIC, ARMENIAN, BASQUE, CATALAN, DANISH, DUTCH, ENGLISH, ESTONIAN, FINNISH, FRENCH, GERMAN, GREEK, HINDI, HUNGARIAN, INDONESIAN, IRISH, ITALIAN, LITHUANIAN, NEPALI, NORWEGIAN, PORTUGUESE, ROMANIAN, RUSSIAN, SERBIAN, SPANISH, SWEDISH, TAMIL, TURKISH, YIDDISH) match inflected forms, so 'running' finds 'run'. BULGARIAN, CROATIAN, CZECH, LATVIAN, PERSIAN, POLISH, SLOVAK, SLOVENIAN, UKRAINIAN and AFRIKAANS have no Snowball stemmer, so they lemmatize against a dictionary instead, which unifies heavily inflected forms a suffix-stripper cannot; AFRIKAANS uses one too, in preference to DUTCH, which over-stems it. CHINESE, JAPANESE, KOREAN and THAI segment first, because they do not put spaces between words and would otherwise index one token per sentence and match nothing; JAPANESE also reduces inflected words to their dictionary form, so '走った' matches '走る', and KOREAN splits particles off the eojeol, so '벚꽃을' matches '벚꽃'.
 
 ### `DELETE_DATABASE_INDEX`
+
+Drop an index declared by ADD_DATABASE_INDEX, dropping the underlying Postgres index as well.
 - `fieldDisplayName` *(required)*: `string`
 - `indexType`: `enum(BM25)` — Only needed when the field carries more than one index.
 - `tableDisplayName` *(required)*: `string`
@@ -255,7 +259,7 @@ Remove a table's vector-search extension. The generated embedding columns and th
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.7.15 schema validate && npx -y zion-mcp@2.7.15 project sync-backend
+npx -y zion-mcp@2.8.0 schema validate && npx -y zion-mcp@2.8.0 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.
 
@@ -265,17 +269,17 @@ npx -y zion-mcp@2.7.15 schema validate && npx -y zion-mcp@2.7.15 project sync-ba
 - The picker lists **primitives only** — a pre-refactor project has no enum or custom types. `required` decides nullability.
 - **Destructive ops** (`DELETE_TABLES`, `DELETE_FIELDS_AND_RELATIONS`, `DELETE_CONSTRAINTS`) lose data; list what will be deleted and warn the user.
 - **Type changes** aren't editable: delete + recreate the column.
-- If results look stale, run `npx -y zion-mcp@2.7.15 schema reload`.
+- If results look stale, run `npx -y zion-mcp@2.8.0 schema reload`.
 
 ## Reading & writing deployed rows (runtime backend)
 
 These verbs hit the **deployed** database, not the editor model, and take a single `--args` JSON blob (no per-field flags). `tableName` must be a real deployed table (`account`, your synced user tables, …); an unknown name fails server-side with `Unknown type '<name>_bool_exp'`.
 
 ```bash
-npx -y zion-mcp@2.7.15 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
-npx -y zion-mcp@2.7.15 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
-npx -y zion-mcp@2.7.15 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
-npx -y zion-mcp@2.7.15 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
+npx -y zion-mcp@2.8.0 runtime query  --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.8.0 runtime insert --args '{"tableName":"post","objects":[{"title":"hi"}],"fields":["id"]}'
+npx -y zion-mcp@2.8.0 runtime update --args '{"tableName":"post","where":{"id":{"_eq":1}},"set":{"title":"bye"}}'
+npx -y zion-mcp@2.8.0 runtime delete --args '{"tableName":"post","where":{"id":{"_eq":1}}}'
 ```
 - `insert` must supply every NOT-NULL column; object keys are the column **apiName** (what the schema read tools report).
 - `update` / `delete` require `where` unless you pass `allowUpdateAll` / `allowDeleteAll=true`.

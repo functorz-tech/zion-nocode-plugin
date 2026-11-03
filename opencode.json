@@ -6,7 +6,7 @@
       "command": [
         "npx",
         "-y",
-        "zion-mcp@2.8.0",
+        "zion-mcp@2.8.1",
         "mcp"
       ],
       "enabled": true

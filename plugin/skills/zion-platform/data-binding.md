@@ -50,22 +50,28 @@ To give a list slot a literal list, bind the Custom > Array option at its schema
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.2 login
-# create a NEW project (auto-pins it):
-npx -y zion-mcp@2.8.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.2 projects search):
-npx -y zion-mcp@2.8.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.3 login
+# create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
+# clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
+npx -y zion-mcp@2.8.3 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.3 projects search):
+npx -y zion-mcp@2.8.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.3 schema load                               # warm the schema session
 ```
+
+`project set-current` also makes the project's only client the current one, which is what pages and
+components are written to. A project with several clients is refused with its client list (a project created before multi-client has a web client **and** a mini program), so pin the one to work on: `project set-current --projectExId <exId> --appExId <appExId>`.
+Pass `--appExId null` to address the project's backend document alone (data model, action flows,
+APIs, permissions, secrets).
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -226,14 +232,14 @@ Delete items from a custom-array binding by index; later items shift down.
 
 ### `CREATE_CONDITIONAL_BINDING`
 
-Create a conditional binding at a schema path: a value chosen by the first branch whose predicate is true. initialBranchNames seeds the branches; operation is REPLACE or CONCAT. Add more branches with INSERT_CONDITIONAL_DATA, build each branch's predicate with the condition tools below, and fill each branch value with a binding tool.
+Create a conditional binding at a schema path: a value chosen by the first branch whose predicate is true. initialBranchNames seeds the branches; operation is REPLACE or CONCAT. The result gives the conditional binding's own schema path, which INSERT_CONDITIONAL_DATA and the other branch tools take, and each branch's id and the schema paths of its condition and value slots: build the predicate at the condition path with the condition tools below and fill the value path with a binding tool.
 - `initialBranchNames`: `array<string>` — Display names of the initial branches; two branches are created when omitted.
 - `operation`: `enum(REPLACE|CONCAT)` — Specifies how to apply the data: 'REPLACE' overwrites the current value, 'CONCAT' appends to it. Default is 'REPLACE'.
 - `schemaPath` *(required)*: `array<{index: integer} | {key: string}>`
 
 ### `INSERT_CONDITIONAL_DATA`
 
-Add a branch (a predicate plus the value it yields) to a conditional binding, after an existing branch id.
+Add a branch (a predicate plus the value it yields) to a conditional binding, after an existing branch id. The result gives the new branch's id and the schema paths of its condition and value slots.
 - `afterId`: `string` — Insert after the branch with this id; inserts at the front when omitted.
 - `conditionData`: `{condition?: object, name?: string, value?: object}` — Initial branch content; omitted parts default to an always-true condition, an empty value of the binding's type, and an auto-generated name.
   - `conditionData.condition` — Full replacement condition; null keeps the current one (a new branch starts always-true — prefer narrowing it via the condition tools at the branch's condition path).
@@ -324,6 +330,6 @@ Change a sort rule's column and/or direction by its index within the filter's so
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.8.2 schema validate && npx -y zion-mcp@2.8.2 project sync-backend
+npx -y zion-mcp@2.8.3 schema validate && npx -y zion-mcp@2.8.3 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

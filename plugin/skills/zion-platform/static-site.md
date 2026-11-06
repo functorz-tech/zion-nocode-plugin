@@ -31,8 +31,8 @@ server-side sweep, so a deploy left half-finished overnight is gone the next mor
 No schema session — this ships files, it does not touch the project schema.
 
 ```bash
-npx -y zion-mcp@2.8.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.2 site deploy --dir ./dist --target BETA
+npx -y zion-mcp@2.8.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.3 site deploy --dir ./dist --target BETA
 ```
 
 `site deploy` does the whole protocol in one call: it scans the directory, declares the
@@ -47,12 +47,14 @@ steps yourself.
 | Where is the site / is an upload stuck? | `site status --target BETA` |
 | Give up on a stuck upload | `site abort --target BETA` |
 
-- **A multi-client project must name the web app**: pass `--appExId <exId>` on every `site` command,
-  so that status and abort address the same site the deploy created. `project set-current` remembers
-  only the project, so without it `site deploy` resolves to the project's backend-only app — which has
-  no site domain — and fails with `UNSUPPORTED_APP_TYPE`. Read the exId from `project metadata` →
-  `apps[]` (the one with `appType: WEB`); an exId from another project fails with `APP_NOT_FOUND`.
-  Single-client projects need no flag.
+- **`site` commands act on the current client** — the one `project create` / `project set-current`
+  pinned — so a project whose only client is the web app needs no flag. Pass `--appExId <exId>` when
+  the project has several clients, or the pinned one is not the web client, so that status and abort
+  address the same site the deploy created. When the call resolves to the project itself — a project
+  with no client, or one pinned to its backend document — the command refuses before sending
+  anything: a project with no client has no site domain and can never host a site. Read the exId from
+  `project metadata` → `apps[]` (the one with `appType: WEB`); an exId from another project fails
+  with `APP_NOT_FOUND`.
 - `--dryRun` reports `fileCount`, `totalBytes`, and `skipped` from the filesystem alone —
   no deployment is created. Use it to confirm the directory is the build output before deploying.
 - `--target PROD` **takes the site live and requires a human to approve a GUI dialog**; the agent

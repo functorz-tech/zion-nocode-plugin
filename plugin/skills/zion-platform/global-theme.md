@@ -8,7 +8,7 @@ A themed project keeps its colours and sizes in one place and components referen
 A variable's referenceValue is `$$` followed by its id, in every category, and that is what UPDATE_COMPONENT_STYLE takes: colours, spacings, radii, font sizes, weights and families on the field of that class, a shadow as `shadow: {variable}`. Only a component holding a reference follows when the variable changes, which is what turns a restyle into a few edits here. There is no line-height category, so a text role is a size and a weight variable paired by name, with the line height sent as px alongside.
 
 ## Font families
-The theme starts with none, so text renders in the platform default until one is added and referenced. GET_THEME_INFO lists the families this client offers (offeredFontFamilies); a FONT_FAMILIES value outside that list is rejected.
+The theme starts with none, so text renders in the platform default until one is added and referenced. GET_THEME_INFO lists the families this client offers (offeredFontFamilies); a FONT_FAMILIES value must name one of them — send its `value`; a `localeEn`/`localeZh` display name is stored as that value — and anything else is rejected. Read the existing fontFamilies variables first and reference one when it fits instead of adding a duplicate. A project that predates theme font variables lists the faces it already uses in styleScaleFontFamilies; follow those unless the user asks for a different face.
 
 ## Editing
 ADD_THEME_VARIABLES returns each new variable's id, which is what component bindings reference. UPDATE_THEME_VARIABLES is incremental — omitted fields keep their current value. DELETE_THEME_VARIABLES refuses preset variables: their ids carry semantics the palette algorithm and existing bindings depend on, and a component left bound to a deleted variable falls back to no value, so check usages first.
@@ -21,22 +21,28 @@ SET_SCROLLBAR_STYLE is web-only; other clients draw the scrollbar with the OS.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.2 login
-# create a NEW project (auto-pins it):
-npx -y zion-mcp@2.8.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.2 projects search):
-npx -y zion-mcp@2.8.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.3 login
+# create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
+# clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
+npx -y zion-mcp@2.8.3 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.3 projects search):
+npx -y zion-mcp@2.8.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.3 schema load                               # warm the schema session
 ```
+
+`project set-current` also makes the project's only client the current one, which is what pages and
+components are written to. A project with several clients is refused with its client list (a project created before multi-client has a web client **and** a mini program), so pin the one to work on: `project set-current --projectExId <exId> --appExId <appExId>`.
+Pass `--appExId null` to address the project's backend document alone (data model, action flows,
+APIs, permissions, secrets).
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -65,7 +71,7 @@ Add theme variables. The result echoes each new variable's id, which is what com
 - `items` *(required)*: `array<{category: enum(PALETTES|COLOR_VARIABLES|FONT_FAMILIES|FONT_SIZES|FONT_WEIGHTS|RADII|SPACINGS|SHADOWS), displayName: string, value: string | number | object}>`
   - `items[].category` — Which category to add to.
   - `items[].displayName` — Label shown in the editor. Need not be unique.
-  - `items[].value` — The variable's value under the default theme, as JSON matching the category: a color string for PALETTES (the palette's basic color, the 12 steps are derived) and FONT_FAMILIES; a `{kind, ...}` color value for COLOR_VARIABLES — `{kind:'paletteRef', paletteId, level}` follows one of that palette's 12 derived levels (1 lightest, 12 darkest; GET_THEME_INFO lists them), omit `level` to follow the basic colour itself, and `{kind:'custom', color}` pins a hex that no palette recolour will move — prefer paletteRef for any shade of a colour the theme already has (surfaces, borders and dividers are Neutral levels); a number for FONT_WEIGHTS; a `{desktop, tablet, phone}` object for FONT_SIZES / RADII / SPACINGS (non-web clients take `{phone}` only); a `{type, offsetX, offsetY, blur, spread, color}` object for SHADOWS. Read GET_THEME_INFO first to copy an existing entry's shape.
+  - `items[].value` — The variable's value under the default theme, as JSON matching the category: a color string for PALETTES (the palette's basic color, the 12 steps are derived); a font family from `offeredFontFamilies` in GET_THEME_INFO for FONT_FAMILIES (send its `value`; a display name is stored as that value); a `{kind, ...}` color value for COLOR_VARIABLES — `{kind:'paletteRef', paletteId, level}` follows one of that palette's 12 derived levels (1 lightest, 12 darkest; GET_THEME_INFO lists them), omit `level` to follow the basic colour itself, and `{kind:'custom', color}` pins a hex that no palette recolour will move — prefer paletteRef for any shade of a colour the theme already has (surfaces, borders and dividers are Neutral levels); a number for FONT_WEIGHTS; a `{desktop, tablet, phone}` object for FONT_SIZES / RADII / SPACINGS (non-web clients take `{phone}` only); a `{type, offsetX, offsetY, blur, spread, color}` object for SHADOWS. Read GET_THEME_INFO first to copy an existing entry's shape.
 
 ### `UPDATE_THEME_VARIABLES`
 
@@ -79,6 +85,6 @@ Rename a theme variable and/or replace its value under the default theme (increm
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.8.2 schema validate && npx -y zion-mcp@2.8.2 project sync-backend
+npx -y zion-mcp@2.8.3 schema validate && npx -y zion-mcp@2.8.3 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

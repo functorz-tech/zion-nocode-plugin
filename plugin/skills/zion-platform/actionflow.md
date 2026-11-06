@@ -9,7 +9,7 @@ Do not create an Actionflow merely to proxy CRUD. Simple single-table CRUD shoul
 ### Execution Modes
 Synchronous: all nodes in one synchronous Actionflow invocation execute inside a single database transaction; the caller blocks for the result, and any node error rolls back every DB write from that invocation. Asynchronous: the caller gets a task handle instead of blocking and retrieves the result later — the flow still computes and returns its declared output; only the failing node's DB writes roll back; required for AI agents and video generation.
 
-Every flow has a `timeout` in seconds for the whole run, not per node: 30 s by default for a synchronous flow and 120 s for an asynchronous one, whose clock keeps running through Delay and AI waits. Set it on ADD_ACTION_FLOWS or UPDATE_ACTION_FLOW: at least 1, and at most 60 while the flow is synchronous — a job that needs longer belongs in an asynchronous flow. GET_ALL_ACTION_FLOWS_INFO and GET_ACTION_FLOW_DETAIL report the timeout in force, default included. When it runs out the flow is cut off inside whatever node is running (a query, custom code, an API call) and fails with a timeout error; a synchronous flow's DB writes roll back. Switching a flow whose timeout is above 60 s to synchronous is refused unless the same UPDATE_ACTION_FLOW call lowers `timeout`.
+Every flow has a `timeout` in seconds for the whole run, not per node: 30 s by default for a synchronous flow and 120 s for an asynchronous one, whose clock stops while a Delay node waits but keeps running through AI waits. Set it on ADD_ACTION_FLOWS or UPDATE_ACTION_FLOW: at least 1, and at most 60 while the flow is synchronous — a job that needs longer belongs in an asynchronous flow. GET_ALL_ACTION_FLOWS_INFO and GET_ACTION_FLOW_DETAIL report the timeout in force, default included. When it runs out the flow is cut off inside whatever node is running (a query, custom code, an API call) and fails with a timeout error; a synchronous flow's DB writes roll back. Switching a flow whose timeout is above 60 s to synchronous is refused unless the same UPDATE_ACTION_FLOW call lowers `timeout`.
 
 ### Triggers
 What fires a flow. Four kinds: Manual (a UI action — no config), scheduled (cron), database-change event, and webhook. Scheduled and database-change triggers are tool-managed: inspect with `GET_ALL_SCHEDULED_TRIGGERS_INFO` / `GET_ALL_DB_TRIGGERS_INFO`, create with `ADD_SCHEDULED_TRIGGERS` (a Quartz cron — set a future `endInstant` or it never fires) and `ADD_DB_TRIGGERS` (a table + INSERT/UPDATE/DELETE), each pointing at a flow id from `GET_ALL_ACTION_FLOWS_INFO` (update/delete variants too). Manual triggers need no setup; webhook triggers are managed by the separate `webhook` plugin (`ADD_CALLBACK_TRIGGERS`) — load it to add or edit an incoming HTTP webhook that fires a flow.
@@ -81,22 +81,28 @@ The list above is the methods you will reach for, not the whole API. The complet
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.2 login
-# create a NEW project (auto-pins it):
-npx -y zion-mcp@2.8.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.2 projects search):
-npx -y zion-mcp@2.8.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.3 login
+# create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
+# clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
+npx -y zion-mcp@2.8.3 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.3 projects search):
+npx -y zion-mcp@2.8.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.3 schema load                               # warm the schema session
 ```
+
+`project set-current` also makes the project's only client the current one, which is what pages and
+components are written to. A project with several clients is refused with its client list (a project created before multi-client has a web client **and** a mini program), so pin the one to work on: `project set-current --projectExId <exId> --appExId <appExId>`.
+Pass `--appExId null` to address the project's backend document alone (data model, action flows,
+APIs, permissions, secrets).
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -190,7 +196,7 @@ narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FI
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Plan with `npx -y zion-mcp@2.8.2 actionflow list-node-templates` (display names plus input/output param types; it carries no id). To add one, read the add-node menu with `BROWSE_ACTION_FLOW_ADD_NODE_OPTIONS` at the position and pass that entry's `node` to `ADD_ACTION_FLOW_NODE`, then bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Plan with `npx -y zion-mcp@2.8.3 actionflow list-node-templates` (display names plus input/output param types; it carries no id). To add one, read the add-node menu with `BROWSE_ACTION_FLOW_ADD_NODE_OPTIONS` at the position and pass that entry's `node` to `ADD_ACTION_FLOW_NODE`, then bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -464,6 +470,6 @@ Extract method for flows: move one contiguous run of nodes (node ids from GET_AC
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.8.2 schema validate && npx -y zion-mcp@2.8.2 project sync-backend
+npx -y zion-mcp@2.8.3 schema validate && npx -y zion-mcp@2.8.3 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

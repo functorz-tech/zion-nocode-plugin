@@ -62,8 +62,8 @@ out of the upload — it is not a file you can override from here.
 No schema session — this ships files, it does not touch the project schema.
 
 ```bash
-npx -y zion-mcp@2.8.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.2 wechat deploy --dir ./miniprogram   # upload, build, save the trial QR code
+npx -y zion-mcp@2.8.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.3 wechat deploy --dir ./miniprogram   # upload, build, save the trial QR code
 ```
 
 `wechat deploy` does the whole upload protocol in one call: it scans the directory, declares the
@@ -78,12 +78,13 @@ writes the trial QR code to a file. Never assemble the individual steps yourself
 | Is the build done / is an upload stuck? | `wechat status` |
 | Give up on a stuck upload | `wechat abort` |
 
-- **A multi-client project must name the mini program app**: pass `--appExId <exId>` on every
-  `wechat` command, so that status and abort address the same deployment the upload created.
-  `project set-current` remembers only the project. Read the exId from `project metadata` →
-  `apps[]` (the one with `appType: WECHAT_MINI_PROGRAM`); any other app type fails with
-  `UNSUPPORTED_APP_TYPE`, and an exId from another project fails with `APP_NOT_FOUND`.
-  Single-client projects need no flag.
+- **`wechat` commands act on the current client** — the one `project create` / `project
+  set-current` pinned — so a project whose only client is the mini program needs no flag. Pass
+  `--appExId <exId>` when the project has several clients, or the pinned one is not the mini
+  program, so that status and abort address the same deployment the upload created. Read the exId
+  from `project metadata` → `apps[]` (the one with `appType: WECHAT_MINI_PROGRAM`); any other app
+  type fails with `UNSUPPORTED_APP_TYPE`, and an exId from another project fails with
+  `APP_NOT_FOUND`.
 - `--dryRun` reports `fileCount`, `totalBytes`, `skipped`, and `serverManaged` from the
   filesystem alone — no deployment is created. Use it to confirm the directory is the mini program
   root before uploading.

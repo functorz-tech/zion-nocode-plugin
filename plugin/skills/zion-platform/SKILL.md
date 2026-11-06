@@ -9,9 +9,9 @@ description: >-
 Before reading platform guidance, identify the active project and pin it when needed:
 
 ```bash
-npx -y zion-mcp@2.8.2 projects search --projectName "My App"
-npx -y zion-mcp@2.8.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.2 schema load
+npx -y zion-mcp@2.8.3 projects search --projectName "My App"
+npx -y zion-mcp@2.8.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.3 schema load
 ```
 
 Read only the capability files needed for the task.
@@ -52,4 +52,4 @@ Each capability is a sibling file in this skill folder. When a task calls for on
 
 For broad architecture or cross-domain planning, read `platform-overview.md`.
 
-> **Always invoke the CLI exactly as written above** — via `npx -y zion-mcp@2.8.2` — never bare `zion-mcp`, even though `--help` prints its own name that way. The `@2.8.2` version pin runs this plugin's exact published build, so a globally-installed `zion-mcp` (or `zion`) on `PATH` can't shadow it.
+> **Always invoke the CLI exactly as written above** — via `npx -y zion-mcp@2.8.3` — never bare `zion-mcp`, even though `--help` prints its own name that way. The `@2.8.3` version pin runs this plugin's exact published build, so a globally-installed `zion-mcp` (or `zion`) on `PATH` can't shadow it.

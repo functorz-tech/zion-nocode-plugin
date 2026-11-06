@@ -11,7 +11,7 @@ A sync redeploys the whole backend and takes anywhere from tens of seconds to a 
 ### Reading the result
 - SYNCED — the saved schema is live on the runtime.
 - FAILED — the deployment pipeline rejected the schema. Something in the project is invalid; find it (the component plugin's project-error list and the logs plugin's DEPLOYMENT entries are the two places it shows up), fix it, and sync again. Repeating the sync unchanged fails the same way.
-- IN_PROGRESS — the pipeline was still running when the wait expired. Nothing is wrong; call project sync-backend again to keep waiting for the same pipeline.
+- IN_PROGRESS — the pipeline was still running when the wait expired. Nothing is wrong, and it finishes on its own, so tell the user it is deploying. Call project sync-backend again only when your next step needs the deployed backend, such as a test against the runtime: waiting otherwise costs the user time and changes nothing.
 - NOT_STARTED — nothing was deployed. The usual cause is the user dismissing the save confirmation the editor raises when the project changed elsewhere; tell them rather than retrying in a loop.
 
 ### One backend, every client app
@@ -23,7 +23,7 @@ Syncing is not publishing. The user's live web or mini-program app is released s
 ## How to drive it (CLI only)
 
 ```bash
-npx -y zion-mcp@2.8.2 schema validate && npx -y zion-mcp@2.8.2 project sync-backend
+npx -y zion-mcp@2.8.3 schema validate && npx -y zion-mcp@2.8.3 project sync-backend
 ```
 
 Every schema edit lands in the CRDT session immediately, but the running backend keeps serving the previously synced schema until `project sync-backend`. So a data model, action flow, API, permission, secret, or AI agent change is invisible to anything that talks to the live app — including `runtime query`, `runtime graphql`, and a published site — until you sync.

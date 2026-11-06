@@ -20,22 +20,28 @@ use them to register/rename/retire entries or edit metadata when you are not set
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.2 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.2 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.2 login
-# create a NEW project (auto-pins it):
-npx -y zion-mcp@2.8.2 project create --projectName "My App"
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.2 projects search):
-npx -y zion-mcp@2.8.2 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.2 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.3 login
+# create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
+# clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
+npx -y zion-mcp@2.8.3 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.3 projects search):
+npx -y zion-mcp@2.8.3 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.3 schema load                               # warm the schema session
 ```
+
+`project set-current` also makes the project's only client the current one, which is what pages and
+components are written to. A project with several clients is refused with its client list (a project created before multi-client has a web client **and** a mini program), so pin the one to work on: `project set-current --projectExId <exId> --appExId <appExId>`.
+Pass `--appExId null` to address the project's backend document alone (data model, action flows,
+APIs, permissions, secrets).
 
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.2 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -46,8 +52,8 @@ You never handle the plaintext. `secret save-value` opens a native masked dialog
 desktop, stores what they type, and attaches the returned handle:
 
 ```bash
-npx -y zion-mcp@2.8.2 secret save-value --displayName "OpenAI API key"   # create a secret and set its value
-npx -y zion-mcp@2.8.2 secret save-value --secretId <id>                  # set / replace an existing secret's value
+npx -y zion-mcp@2.8.3 secret save-value --displayName "OpenAI API key"   # create a secret and set its value
+npx -y zion-mcp@2.8.3 secret save-value --secretId <id>                  # set / replace an existing secret's value
 ```
 Pass exactly one of `--displayName` or `--secretId` (ids come from `GET_ALL_SECRET_CONFIGS`). It
 needs a desktop session, so it fails on headless / SSH / CI — there is no fallback in which you take
@@ -100,6 +106,6 @@ Delete secrets by id. References to a deleted secret elsewhere (flows, API confi
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.8.2 schema validate && npx -y zion-mcp@2.8.2 project sync-backend
+npx -y zion-mcp@2.8.3 schema validate && npx -y zion-mcp@2.8.3 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

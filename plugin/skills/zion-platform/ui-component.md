@@ -41,6 +41,9 @@ A row of cards is sized one axis at a time. Along the row, give every child `fil
 When a sentence reports as clipped horizontally, it is nearly always `textWrap` false (see Typography below): widening the box, or setting `overflowX`, does not make the text reflow.
 A TEXT_INPUT collecting a password needs `password: true` via `UPDATE_COMPONENT_PROPERTIES`; a "Password" placeholder alone does not mask anything.
 
+### Bottom Navigation Is The Client's Tab Bar
+On a mini-program or mobile client, the row of tabs along the bottom of the screen — Home / Categories / Cart / Me — is the client's native tab bar: a client setting the runtime draws itself, not components on a page. Whenever such an app has a few top-level sections the user moves between, that is a tab bar, whether or not the request says "tab bar" or "bottom navigation". Build it this way: one top-level PAGE per section, then `SET_TAB_BAR_ENABLED` and `UPDATE_TAB_BAR_ITEMS` in the same batch to point a slot at each page, with icons from `component tab-bar-icons` — two to five tabs, one page per tab. Read `GET_TAB_BAR_INFO` first when the client may already have one. Do NOT build the bar out of components — not a LAYOUT_VIEW pinned to the bottom of each page, not a TAB_VIEW holding every section's content on one page. A component copy has to be repeated on every page and drifts apart, and it is not the bar a mini-program user expects. Leave the bottom of each tab page free for the bar. Build one from components only when the user explicitly asks for a custom bar the native one cannot draw. A web client has no native tab bar; its navigation is components.
+
 ### A Look Is Decided, Not Defaulted
 A request that names no visual direction — "a task tracker", "a booking page" — is not a request for no styling: the platform's creation defaults are what produce the grey-box build the user then has to describe their way out of. The subject is where a non-generic direction comes from — what this app is, who opens it, the one job it does, and the palette, typeface and type roles that reading implies — and it is the only input no other project shares: a shift-handover tool for night-shift nurses and a portfolio for a ceramicist should not resolve to the same screen. Written into the theme (next section), that direction holds every screen built out of it together. A direction the user states — a brand colour, "dark", "playful", a screenshot — replaces your own everywhere. What fails is splitting the difference: a stated direction on the first two screens and your own default on the rest reads worse than either applied throughout, because inconsistency looks like a bug rather than a choice.
 
@@ -108,14 +111,23 @@ TAB_VIEW is a different question entirely: use it only when the tab strip itself
 Both TAB_VIEW and CONDITIONAL_VIEW take `preserveStateOnSwitch`, and it is the same mechanism in both: true keeps every case alive, so a scrolled list, a half-filled input or a loaded query survives switching away and back; false tears the inactive case down and rebuilds it from scratch. Both are created with it ON. Turn it off only when stale state would be wrong (a form that must reset), and remember the cost: every case stays mounted.
 
 ### Components That Display a Field of Their Data
-DATA_SELECTOR, SELECT_VIEW and LIST name one field of their data source: `displayDataField` (the value the user sees) and `cellKeyDataField` (the row identity). Binding the dataSource is not enough — a DATA_SELECTOR or SELECT_VIEW whose data source resolves to a list of objects is invalid until its displayDataField is set. Set it with `UPDATE_COMPONENT_PROPERTIES`, passing the field's plain NAME as a string; the full field reference is resolved for you, so never hand-assemble one. The candidates appear as selectableDataFields in `GET_COMPONENT_INFO` once the dataSource is bound — so the order is always: create → bind dataSource → read the component → name the field.
+DATA_SELECTOR and SELECT_VIEW name the field they display with `displayDataField`. Binding the dataSource is not enough — a DATA_SELECTOR or SELECT_VIEW whose data source resolves to a list of objects is invalid until its displayDataField is set. Set it with `UPDATE_COMPONENT_PROPERTIES`, passing the field's plain NAME as a string; the full field reference is resolved for you, so never hand-assemble one.
+LIST does not have a display field: its cell child component renders each row, and that content binds to the list's current item.
+The candidates appear as selectableDataFields in `GET_COMPONENT_INFO` once the dataSource is bound — so the order is always: create → bind dataSource → read the component → name the field.
 
 ### Page Data: Queries, Variables & Inputs
 Pages have NO separate query list — a page query IS a read-only page variable whose dataSource is a database query. It is for data more than one component reads, or a filter the page owns centrally; a single list showing one filtered table binds that table itself (see Data Bindings below) and needs nothing here:
 - `ADD_COMPONENT_QUERY` attaches a table query to a PAGE or MODAL (limit 1 = single row, >1 = list). Components consume it through data bindings (bindings plugin) at the echoed dataSourceSchemaPath; narrow filters and sorting with the request-filter tools at that same path. The result also reports rolesWithoutSelect: those roles see no rows until they are granted SELECT with the permission plugin's table-permission tool. Tune with `UPDATE_COMPONENT_QUERY` — which also sets or clears the row limit of the query a LIST, SELECT_VIEW, DATA_SELECTOR or SHEET owns; remove queries and variables alike with `DELETE_COMPONENT_VARIABLES`.
+- When the page has to show changes other users make while it is open (a chat, a live dashboard, an order's status), make the query a subscription: queryType SUBSCRIPTION on `ADD_COMPONENT_QUERY` or `SET_SHEET_DATA_SOURCE`, or switch an existing page query, LIST or SHEET with `UPDATE_COMPONENT_QUERY`. Leave everything else a plain query.
 - Page-local mutable state: `ADD_COMPONENT_VARIABLES`, with each typeIdentifier picked from `GET_COMPONENT_VARIABLE_SELECTABLE_TYPES` — never hand-assembled. A new variable starts with no value, so give it an initial one at the `defaultValueSchemaPath` the result echoes whenever anything reads it: conditional cases, branch conditions and SET_VARIABLE_DATA values all test the variable against specific values, and none of them match an empty variable. The page then loads with every dependent case unmatched — blank labels, the fallback branch showing — and a toggle whose new value is itself conditional on the old one cannot recover, because it has nothing to match either.
 - Page parameters: `ADD_COMPONENT_INPUTS` / `UPDATE_COMPONENT_INPUT` / `DELETE_COMPONENT_INPUTS`. WEB pages take URL query/path params; WECHAT/MOBILE pages and MODALs take general inputs. Navigation and show-modal call sites pass one value per input.
 - `SET_INITIAL_PAGE_ID` sets the app's home page for the current client.
+
+### SEO Path Ranges
+A WEB page's URL path parameters are its URL_PATH inputs. Under SSR/SSG each one needs a value range so the publisher can generate its URLs: literal values via `SET_SEO_PATH_STATIC_OPTIONS`, or database-backed values via `ADD_SEO_PATH_DB_QUERY` (the chosen column's values become the segments; narrow that source's rows with `GET_REQUEST_FILTER_CONTEXT` and `ADD_REQUEST_FILTER_CONDITION`). Start from `GET_SEO_INFO` and read one page with `GET_SEO_PAGE_DETAIL`. Path ranges are hidden and ignored under CSR, so a CSR client has to switch rendering mode first: `SET_SEO_RENDERING_METHOD` handles CSR to SSG, while SSR is set in the project settings. Renaming a URL_PATH input migrates its range; deleting it removes the range.
+
+### Global SEO
+Rendering mode, sitemap mode and robots.txt are client-wide, not per page. Read them with `GET_SEO_INFO`, then switch the mode with `SET_SEO_RENDERING_METHOD` or replace the robots file with `SET_SEO_ROBOTS_TXT`. The sitemap mode is not set directly: the editor derives it from the rendering mode (CSR → AUTO, SSG → BY_PATH_DATA, SSR keeps the current value). SSG needs the project's SEO capability — the tool refuses it when the capability data reports none and proceeds when that data is unavailable; SSR needs a single-tenant server, which the tool refuses because it cannot verify it — ask the user to switch that in the project settings. Leaving SSG clears the pages generated at publish time.
 
 ### Data Bindings on Components
 `GET_COMPONENT_BINDABLE_PROPERTIES` lists every place a component can be bound — always start there and copy the paths verbatim, never hand-assemble a binding path. It returns two sections: `properties`, the component's own slots, each with its ready-to-use schemaPath, expected type, current binding and scope; and `actionSlots`, the parameter slots of the actions already wired to its events, chained success/failure branches included. `ADD_COMPONENT_ACTIONS` echoes an action's slots when it creates it — bind them in the same turn when you can, and use `actionSlots` to find them again in any later turn. Fill the echoed paths with the bindings plugin's tools: `BROWSE_DATA_BINDING_OPTIONS` + `CREATE_OPTION_BINDING` for dataSource slots and other dynamic values, `CREATE_CONST_BINDING` for literals. A LIST, SELECT_VIEW or DATA_SELECTOR can take its dataSource either way, and the options tree offers both in one answer: the tables under 'Table', and any page query under 'Context > Current page > Data source'. **Prefer the table** — a component that owns its data source is filtered, sorted and retyped in one place, and `GET_REQUEST_FILTER_CONTEXT` narrows it at the component's own path. Reach for a page query (`ADD_COMPONENT_QUERY` first) only when the SAME result set is genuinely shared — two components reading one query, or a filter the page tunes centrally. One component, one filtered list is not a sharing case: adding a page variable there buys nothing and leaves a second thing to keep in step. Inside a list cell (scope "list-cell:<listId>") the options tree additionally offers the current list item's fields under 'item-data' — bind cell children to those instead of re-querying the table.
@@ -143,17 +155,17 @@ Only the editor's canvas shows what the user will see, and canvas screenshots ar
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.3 login
+npx -y zion-mcp@2.8.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.4 login
 # create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
 # clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
-npx -y zion-mcp@2.8.3 project create --projectName "My App" --appType WEB
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.3 projects search):
-npx -y zion-mcp@2.8.3 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.3 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.4 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.4 projects search):
+npx -y zion-mcp@2.8.4 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.4 schema load                               # warm the schema session
 ```
 
 `project set-current` also makes the project's only client the current one, which is what pages and
@@ -164,7 +176,7 @@ APIs, permissions, secrets).
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -201,6 +213,15 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Show or hide the native tab bar | `SET_TAB_BAR_ENABLED` | `enabled` |
 | Point a tab-bar slot at a page | `UPDATE_TAB_BAR_ITEMS` | `items` |
 | Colour the tab bar | `UPDATE_TAB_BAR_STYLE` | — |
+| SEO context: rendering mode, pages with path params | `GET_SEO_INFO` | — |
+| One page's SEO path ranges | `GET_SEO_PAGE_DETAIL` | `pageId` |
+| Set literal values for a URL path parameter | `SET_SEO_PATH_STATIC_OPTIONS` | `options`, `pageId`, `pathData` |
+| Add a database-backed path value source | `ADD_SEO_PATH_DB_QUERY` | `columnDisplayName`, `pageId`, `pathData`, `tableDisplayName` |
+| Update a database-backed path value source | `UPDATE_SEO_PATH_DB_QUERY` | `index`, `pageId`, `pathData` |
+| Remove a database-backed path value source | `DELETE_SEO_PATH_DB_QUERY` | `index`, `pageId`, `pathData` |
+| Remove a URL path parameter's whole range | `DELETE_SEO_PATH_RANGE` | `pageId`, `pathData` |
+| Switch the rendering method | `SET_SEO_RENDERING_METHOD` | `renderingMethod` |
+| Replace the robots.txt content | `SET_SEO_ROBOTS_TXT` | `content` |
 | Client variables: state, values, value paths | `GET_CLIENT_VARIABLES_INFO` | — |
 | Types a client variable accepts | `GET_CLIENT_VARIABLE_SELECTABLE_TYPES` | — |
 | Declare client variables | `ADD_CLIENT_VARIABLES` | `items` |
@@ -216,11 +237,11 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 Component writes go through the CLI like any other edit: `GET_COMPONENT_TEMPLATE` then `ADD_COMPONENT` to build, `UPDATE_COMPONENT_STYLE` to restyle, `MOVE_COMPONENTS` to restructure, `ADD_COMPONENT_ACTIONS` to wire events, `DELETE_COMPONENTS` to remove — see "Building & Editing the Component Tree" above. One limit is real: you cannot see what you built — the editor canvas and error center are not reachable from here, so a screen can be schema-valid and still look wrong. Verify structurally with `GET_CONTAINER_CHILDREN_INFO` and `GET_INCOMPLETE_STRUCTURES` (its `responsiveRisks` catches the desktop-width-on-phone case), and where appearance is the acceptance criterion, prefer handing the user steps over guessing.
 
-The preset tab-bar icon library is reachable: `npx -y zion-mcp@2.8.3 component tab-bar-icons` lists every icon this deployment ships as a name and the media exId `UPDATE_TAB_BAR_ITEMS` takes. A shown tab needs an icon for both its normal and its selected state or the project reports an error, and the exIds are hashids of media rows that cannot be derived from an icon's name — a value that could not be an exId is refused by the write rather than failing the mini-program build over a file it cannot find, so take them from that listing and never invent one. An icon the library does not ship still has to be brought in through the editor (`web-assets.md`) or picked there by the user: nothing here imports media.
+The preset tab-bar icon library is reachable: `npx -y zion-mcp@2.8.4 component tab-bar-icons` lists every icon this deployment ships as a name and the media exId `UPDATE_TAB_BAR_ITEMS` takes. A shown tab needs an icon for both its normal and its selected state or the project reports an error, and the exIds are hashids of media rows that cannot be derived from an icon's name — a value that could not be an exId is refused by the write rather than failing the mini-program build over a file it cannot find, so take them from that listing and never invent one. An icon the library does not ship still has to be brought in through the editor (`web-assets.md`) or picked there by the user: nothing here imports media.
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.8.3 schema validate && npx -y zion-mcp@2.8.3 project sync-backend
+npx -y zion-mcp@2.8.4 schema validate && npx -y zion-mcp@2.8.4 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

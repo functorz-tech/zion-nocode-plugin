@@ -13,7 +13,11 @@ Zion's payment system is built around a developer-owned **order table** plus a s
    - **Payment configs**: call ADD_PAYMENT_CONFIGS with one or more items. On the first add also pass the order table's display name — it inserts the payment tables; later adds omit it. Each item's provider must be one the product offers (see above). Every item mints a payment config and its empty PAYMENT_CALLBACK and grants every role the provider's default billing methods; several configs may share a provider.
 4. Configure credentials.
    - Legacy: the gateway credentials are the user's own, in the editor (Action → Payment) — WeChat Pay (merchant ID, APIv2 key, linked Mini Program AppID, apiclient_cert.p12 for refunds), Alipay (app ID and RSA2 key pair) and/or Airwallex (client ID, API key, webhook secret).
-   - Payment configs: create or reuse a project secret (ADD_SECRET_CONFIGS, GET_ALL_SECRET_CONFIGS) and bind it with UPDATE_PAYMENT_CONFIGS — text fields inline, secret fields by secret id; the same call sets supportedProducts and supportedClients. Brand assets stay editor-only.
+   - Payment configs: every credential field and the product choice come from the user; never invent a value or leave a required field empty. Collect them before UPDATE_PAYMENT_CONFIGS:
+     - Secret fields (Alipay's app private key, WeChat Pay's API key): reuse a secret from GET_ALL_SECRET_CONFIGS or have the user type the value with secret save-value.
+     - Text fields are not secret, and there is no card for them: ask for each one in a chat turn and wait for the reply. For Alipay that is the **app ID** and the **Alipay public key**, for WeChat Pay the **AppID** and **merchant ID**. Saving the private key does not supply them.
+     - Products: unless the request already names them, ask which checkout products the config supports with `ask_user_question` (multiSelect) — for Alipay, PC website payment (`ALIPAY_PC_WEB`, web clients) and app payment (`ALIPAY_APP`, mobile clients).
+     Then bind them with UPDATE_PAYMENT_CONFIGS — text fields inline, secret fields by secret id; the same call sets supportedProducts and supportedClients. Brand assets stay editor-only.
 5. Wire the fulfillment flows.
    - Legacy: the auto-generated payment/refund callback flows are already wired.
    - Payment configs: the callback starts empty. Create or edit the fulfillment Actionflow, then bind it per event kind with SET_PAYMENT_CALLBACK_ACTION and fill the returned `inputArgsSchemaPath` with the binding tools.
@@ -73,17 +77,17 @@ GET_PAYMENT_CONFIGS decides the model. Legacy: ACTIVATE_PAYMENT turns the module
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.3 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.3 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.3 login
+npx -y zion-mcp@2.8.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.4 login
 # create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
 # clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
-npx -y zion-mcp@2.8.3 project create --projectName "My App" --appType WEB
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.3 projects search):
-npx -y zion-mcp@2.8.3 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.3 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.4 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.4 projects search):
+npx -y zion-mcp@2.8.4 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.4 schema load                               # warm the schema session
 ```
 
 `project set-current` also makes the project's only client the current one, which is what pages and
@@ -94,7 +98,7 @@ APIs, permissions, secrets).
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.3 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -138,11 +142,12 @@ One payment config by id: its provider, products, clients, callback ids and cred
 ### `ADD_PAYMENT_CONFIGS`
 
 Add payment configs on a payment-config project. The first add also initializes the payment module: pass the existing order table's display name (later adds omit it) and it inserts the payment tables and relations. Every item names its provider — one this product offers, which fixes its credential shape — plus products and clients; credentials may be supplied here or later via UPDATE_PAYMENT_CONFIGS. Each item mints a config and its empty PAYMENT_CALLBACK and grants every role the provider's default billing methods; bind the callback flows with SET_PAYMENT_CALLBACK_ACTION. Several configs for the same provider are allowed.
-- `items` *(required)*: `array<object · provider: AIRWALLEX → {credentials?: {apiKeySecretId?: string, clientId?: string, env?: enum(DEMO|PROD), legalEntityId?: string, linkedPaymentAccountId?: string, webhookSecretSecretId?: string}, name: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(DROP_IN_ELEMENT|HOSTED_PAYMENT_PAGE)>} | ALIPAY → {credentials?: {alipayPublicKey?: string, appId?: string, merchantPrivateKeySecretId?: string}, name: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(ALIPAY_PC_WEB|ALIPAY_WAP|ALIPAY_APP)>} | STRIPE → {credentials?: {endpointSecretSecretId?: string, publishableKey?: string, secretKeySecretId?: string}, name: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(CHECKOUT|ELEMENT|PAYMENT_SHEET)>} | WECHAT → {credentials?: {appId?: string, mchId?: string, mchKeySecretId?: string, wechatPaymentBase64CertSecretId?: string}, name: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(WECHAT_MINI_PROGRAM|WECHAT_JSAPI|WECHAT_NATIVE|WECHAT_H5|WECHAT_APP)>}>` — Configs to add; at least one. Each item's provider selects its shape.
+- `items` *(required)*: `array<object · provider: AIRWALLEX → {credentials?: {apiKeySecretId?: string, clientId?: string, env?: enum(DEMO|PROD), legalEntityId?: string, linkedPaymentAccountId?: string, webhookSecretSecretId?: string}, name: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(DROP_IN_ELEMENT|HOSTED_PAYMENT_PAGE)>} | ALIPAY → {credentials?: {alipayPublicKey?: string, appId?: string, merchantPrivateKeySecretId?: string}, name: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(ALIPAY_PC_WEB|ALIPAY_WAP|ALIPAY_APP)>} | STRIPE → {credentials?: {endpointSecretSecretId?: string, publishableKey?: string, secretKeySecretId?: string}, name: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(CHECKOUT|ELEMENT|PAYMENT_SHEET)>} | WECHAT → {credentials?: {appId?: string, mchId?: string, mchKeySecretId?: string, wechatPaymentBase64CertSecretId?: string}, name: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(WECHAT_MINI_PROGRAM|WECHAT_JSAPI|WECHAT_NATIVE|WECHAT_H5|WECHAT_APP)>} | WECHAT_VIRTUAL → {credentials?: {appId?: string, appKeySecretId?: string, env?: enum(PROD|SANDBOX), messageEncodingAesKeySecretId?: string, messageTokenSecretId?: string, offerId?: string, sandboxAppKeySecretId?: string}, name: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(WECHAT_VIRTUAL_GOODS)>}>` — Configs to add; at least one. Each item's provider selects its shape.
   - `items[].credentials` — Credentials for this provider. Omit a field to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.apiKeySecretId` *(when `provider=AIRWALLEX`)* — Id of a project secret to bind as the API key. Omit to leave it unchanged (unset on create); an empty string clears the binding.
   - `items[].credentials.clientId` *(when `provider=AIRWALLEX`)* — Airwallex client id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.env` *(when `provider=AIRWALLEX`)* — Airwallex environment. Omit to leave it unchanged (unset on create); it cannot be cleared.
+  - `items[].credentials.env` *(when `provider=WECHAT_VIRTUAL`)* — Virtual payment environment. PROD needs appKeySecretId, SANDBOX needs sandboxAppKeySecretId; iOS only pays on PROD. Omit to leave it unchanged (PROD on create); it cannot be cleared.
   - `items[].credentials.legalEntityId` *(when `provider=AIRWALLEX`)* — Airwallex legal entity id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.linkedPaymentAccountId` *(when `provider=AIRWALLEX`)* — Airwallex linked payment account id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.webhookSecretSecretId` *(when `provider=AIRWALLEX`)* — Id of a project secret to bind as the webhook secret. Omit to leave it unchanged (unset on create); an empty string clears the binding.
@@ -151,6 +156,7 @@ Add payment configs on a payment-config project. The first add also initializes 
   - `items[].provider` *(when `provider=ALIPAY`)* — Required. Must be ALIPAY for this item shape.
   - `items[].provider` *(when `provider=STRIPE`)* — Required. Must be STRIPE for this item shape.
   - `items[].provider` *(when `provider=WECHAT`)* — Required. Must be WECHAT for this item shape.
+  - `items[].provider` *(when `provider=WECHAT_VIRTUAL`)* — Required. Must be WECHAT_VIRTUAL for this item shape.
   - `items[].supportedClients` — Clients allowed to use this config. Omit for every client.
   - `items[].supportedClients.allowAll` — true means every current and future client; false restricts the config to clientIds.
   - `items[].supportedClients.clientIds` — Client app exIds the config is usable on. Opaque ids of the project's clients; passed through without validation.
@@ -158,6 +164,7 @@ Add payment configs on a payment-config project. The first add also initializes 
   - `items[].credentials.alipayPublicKey` *(when `provider=ALIPAY`)* — Alipay public key (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.appId` *(when `provider=ALIPAY`)* — Alipay app id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.appId` *(when `provider=WECHAT`)* — WeChat app id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
+  - `items[].credentials.appId` *(when `provider=WECHAT_VIRTUAL`)* — Mini program AppID the virtual payment belongs to (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.merchantPrivateKeySecretId` *(when `provider=ALIPAY`)* — Id of a project secret to bind as the merchant private key. Omit to leave it unchanged (unset on create); an empty string clears the binding.
   - `items[].credentials.endpointSecretSecretId` *(when `provider=STRIPE`)* — Id of a project secret to bind as the webhook endpoint secret. Omit to leave it unchanged (unset on create); an empty string clears the binding.
   - `items[].credentials.publishableKey` *(when `provider=STRIPE`)* — Stripe publishable key (plain text, not a secret). Omit to leave it unchanged (unset on create); an empty string clears.
@@ -165,17 +172,23 @@ Add payment configs on a payment-config project. The first add also initializes 
   - `items[].credentials.mchId` *(when `provider=WECHAT`)* — WeChat merchant id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.mchKeySecretId` *(when `provider=WECHAT`)* — Id of a project secret to bind as the merchant key. Omit to leave it unchanged (unset on create); an empty string clears the binding.
   - `items[].credentials.wechatPaymentBase64CertSecretId` *(when `provider=WECHAT`)* — Id of a project secret to bind as the base64 payment certificate. Omit to leave it unchanged (unset on create); an empty string clears the binding.
+  - `items[].credentials.appKeySecretId` *(when `provider=WECHAT_VIRTUAL`)* — Id of a project secret to bind as the production AppKey. Omit to leave it unchanged (unset on create); an empty string clears the binding.
+  - `items[].credentials.messageEncodingAesKeySecretId` *(when `provider=WECHAT_VIRTUAL`)* — Id of a project secret to bind as the EncodingAESKey of the message push settings. Omit to leave it unchanged (unset on create); an empty string clears the binding.
+  - `items[].credentials.messageTokenSecretId` *(when `provider=WECHAT_VIRTUAL`)* — Id of a project secret to bind as the Token of the mini program's message push settings, used to verify WeChat's pushes. Omit to leave it unchanged (unset on create); an empty string clears the binding.
+  - `items[].credentials.offerId` *(when `provider=WECHAT_VIRTUAL`)* — Virtual payment OfferID from the mini program's virtual payment console (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
+  - `items[].credentials.sandboxAppKeySecretId` *(when `provider=WECHAT_VIRTUAL`)* — Id of a project secret to bind as the sandbox AppKey. Omit to leave it unchanged (unset on create); an empty string clears the binding.
 - `orderTableDisplayName`: `string` — Display name of the existing table to use as the order table. Required on the first add (when the payment tables do not exist yet); ignored afterwards.
 
 ### `UPDATE_PAYMENT_CONFIGS`
 
 Incrementally update payment configs by id; omitted fields stay unchanged. Read each config with GET_PAYMENT_CONFIG_DETAIL first — the lock engine requires it. Each item repeats the config's provider as its discriminator. Secret credential fields take a secret id from the secret tools (an empty string clears the binding); text fields and supportedProducts/supportedClients are written inline, products and clients replaced wholesale. The provider itself cannot be changed.
-- `items` *(required)*: `array<object · provider: AIRWALLEX → {configId: string, credentials?: {apiKeySecretId?: string, clientId?: string, env?: enum(DEMO|PROD), legalEntityId?: string, linkedPaymentAccountId?: string, webhookSecretSecretId?: string}, name?: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(DROP_IN_ELEMENT|HOSTED_PAYMENT_PAGE)>} | ALIPAY → {configId: string, credentials?: {alipayPublicKey?: string, appId?: string, merchantPrivateKeySecretId?: string}, name?: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(ALIPAY_PC_WEB|ALIPAY_WAP|ALIPAY_APP)>} | STRIPE → {configId: string, credentials?: {endpointSecretSecretId?: string, publishableKey?: string, secretKeySecretId?: string}, name?: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(CHECKOUT|ELEMENT|PAYMENT_SHEET)>} | WECHAT → {configId: string, credentials?: {appId?: string, mchId?: string, mchKeySecretId?: string, wechatPaymentBase64CertSecretId?: string}, name?: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(WECHAT_MINI_PROGRAM|WECHAT_JSAPI|WECHAT_NATIVE|WECHAT_H5|WECHAT_APP)>}>` — Configs to update; at least one. Each item repeats its config's provider.
+- `items` *(required)*: `array<object · provider: AIRWALLEX → {configId: string, credentials?: {apiKeySecretId?: string, clientId?: string, env?: enum(DEMO|PROD), legalEntityId?: string, linkedPaymentAccountId?: string, webhookSecretSecretId?: string}, name?: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(DROP_IN_ELEMENT|HOSTED_PAYMENT_PAGE)>} | ALIPAY → {configId: string, credentials?: {alipayPublicKey?: string, appId?: string, merchantPrivateKeySecretId?: string}, name?: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(ALIPAY_PC_WEB|ALIPAY_WAP|ALIPAY_APP)>} | STRIPE → {configId: string, credentials?: {endpointSecretSecretId?: string, publishableKey?: string, secretKeySecretId?: string}, name?: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(CHECKOUT|ELEMENT|PAYMENT_SHEET)>} | WECHAT → {configId: string, credentials?: {appId?: string, mchId?: string, mchKeySecretId?: string, wechatPaymentBase64CertSecretId?: string}, name?: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(WECHAT_MINI_PROGRAM|WECHAT_JSAPI|WECHAT_NATIVE|WECHAT_H5|WECHAT_APP)>} | WECHAT_VIRTUAL → {configId: string, credentials?: {appId?: string, appKeySecretId?: string, env?: enum(PROD|SANDBOX), messageEncodingAesKeySecretId?: string, messageTokenSecretId?: string, offerId?: string, sandboxAppKeySecretId?: string}, name?: string, supportedClients?: {allowAll?: boolean, clientIds?: array<string>}, supportedProducts?: array<enum(WECHAT_VIRTUAL_GOODS)>}>` — Configs to update; at least one. Each item repeats its config's provider.
   - `items[].configId` — Id of the config to update (from GET_PAYMENT_CONFIGS).
   - `items[].credentials` — Credentials for this provider. Omit a field to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.apiKeySecretId` *(when `provider=AIRWALLEX`)* — Id of a project secret to bind as the API key. Omit to leave it unchanged (unset on create); an empty string clears the binding.
   - `items[].credentials.clientId` *(when `provider=AIRWALLEX`)* — Airwallex client id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.env` *(when `provider=AIRWALLEX`)* — Airwallex environment. Omit to leave it unchanged (unset on create); it cannot be cleared.
+  - `items[].credentials.env` *(when `provider=WECHAT_VIRTUAL`)* — Virtual payment environment. PROD needs appKeySecretId, SANDBOX needs sandboxAppKeySecretId; iOS only pays on PROD. Omit to leave it unchanged (PROD on create); it cannot be cleared.
   - `items[].credentials.legalEntityId` *(when `provider=AIRWALLEX`)* — Airwallex legal entity id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.linkedPaymentAccountId` *(when `provider=AIRWALLEX`)* — Airwallex linked payment account id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.webhookSecretSecretId` *(when `provider=AIRWALLEX`)* — Id of a project secret to bind as the webhook secret. Omit to leave it unchanged (unset on create); an empty string clears the binding.
@@ -184,6 +197,7 @@ Incrementally update payment configs by id; omitted fields stay unchanged. Read 
   - `items[].provider` *(when `provider=ALIPAY`)* — Required. Must be ALIPAY, the provider of the config this item updates.
   - `items[].provider` *(when `provider=STRIPE`)* — Required. Must be STRIPE, the provider of the config this item updates.
   - `items[].provider` *(when `provider=WECHAT`)* — Required. Must be WECHAT, the provider of the config this item updates.
+  - `items[].provider` *(when `provider=WECHAT_VIRTUAL`)* — Required. Must be WECHAT_VIRTUAL, the provider of the config this item updates.
   - `items[].supportedClients` — Replaces the supported clients wholesale. Omit to keep.
   - `items[].supportedClients.allowAll` — true means every current and future client; false restricts the config to clientIds.
   - `items[].supportedClients.clientIds` — Client app exIds the config is usable on. Opaque ids of the project's clients; passed through without validation.
@@ -191,6 +205,7 @@ Incrementally update payment configs by id; omitted fields stay unchanged. Read 
   - `items[].credentials.alipayPublicKey` *(when `provider=ALIPAY`)* — Alipay public key (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.appId` *(when `provider=ALIPAY`)* — Alipay app id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.appId` *(when `provider=WECHAT`)* — WeChat app id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
+  - `items[].credentials.appId` *(when `provider=WECHAT_VIRTUAL`)* — Mini program AppID the virtual payment belongs to (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.merchantPrivateKeySecretId` *(when `provider=ALIPAY`)* — Id of a project secret to bind as the merchant private key. Omit to leave it unchanged (unset on create); an empty string clears the binding.
   - `items[].credentials.endpointSecretSecretId` *(when `provider=STRIPE`)* — Id of a project secret to bind as the webhook endpoint secret. Omit to leave it unchanged (unset on create); an empty string clears the binding.
   - `items[].credentials.publishableKey` *(when `provider=STRIPE`)* — Stripe publishable key (plain text, not a secret). Omit to leave it unchanged (unset on create); an empty string clears.
@@ -198,6 +213,11 @@ Incrementally update payment configs by id; omitted fields stay unchanged. Read 
   - `items[].credentials.mchId` *(when `provider=WECHAT`)* — WeChat merchant id (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
   - `items[].credentials.mchKeySecretId` *(when `provider=WECHAT`)* — Id of a project secret to bind as the merchant key. Omit to leave it unchanged (unset on create); an empty string clears the binding.
   - `items[].credentials.wechatPaymentBase64CertSecretId` *(when `provider=WECHAT`)* — Id of a project secret to bind as the base64 payment certificate. Omit to leave it unchanged (unset on create); an empty string clears the binding.
+  - `items[].credentials.appKeySecretId` *(when `provider=WECHAT_VIRTUAL`)* — Id of a project secret to bind as the production AppKey. Omit to leave it unchanged (unset on create); an empty string clears the binding.
+  - `items[].credentials.messageEncodingAesKeySecretId` *(when `provider=WECHAT_VIRTUAL`)* — Id of a project secret to bind as the EncodingAESKey of the message push settings. Omit to leave it unchanged (unset on create); an empty string clears the binding.
+  - `items[].credentials.messageTokenSecretId` *(when `provider=WECHAT_VIRTUAL`)* — Id of a project secret to bind as the Token of the mini program's message push settings, used to verify WeChat's pushes. Omit to leave it unchanged (unset on create); an empty string clears the binding.
+  - `items[].credentials.offerId` *(when `provider=WECHAT_VIRTUAL`)* — Virtual payment OfferID from the mini program's virtual payment console (plain text). Omit to leave it unchanged (unset on create); an empty string clears.
+  - `items[].credentials.sandboxAppKeySecretId` *(when `provider=WECHAT_VIRTUAL`)* — Id of a project secret to bind as the sandbox AppKey. Omit to leave it unchanged (unset on create); an empty string clears the binding.
 
 ### `DELETE_PAYMENT_CONFIGS`
 
@@ -214,6 +234,6 @@ Bind or unbind the Actionflow that runs for one payment event kind on a payment 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.8.3 schema validate && npx -y zion-mcp@2.8.3 project sync-backend
+npx -y zion-mcp@2.8.4 schema validate && npx -y zion-mcp@2.8.4 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

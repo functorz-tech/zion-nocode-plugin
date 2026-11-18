@@ -28,35 +28,33 @@ Operations:
 - `GET_OBJECT_TYPE_DEFINITION_DETAIL`: read one object type by id, its fields resolved to the same readable type names as the listing. This satisfies that requirement for that type alone, so an edit to a known type needs only this call.
 - `GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES`: the types a field of an object type accepts, with the exact `typeIdentifier` to write.
 - `ADD_OBJECT_TYPE_DEFINITIONS`: create object types, each with a displayName and its initial fields. Ids are assigned by the platform and returned in the result — do not send one.
-- `UPDATE_OBJECT_TYPE_DEFINITIONS`: update a type's own displayName / description / private flag only (omitted fields are unchanged).
+- `UPDATE_OBJECT_TYPE_DEFINITIONS`: update a type's own displayName / description only (omitted fields are unchanged).
 - `ADD_TYPE_DEFINITION_FIELDS` / `UPDATE_TYPE_DEFINITION_FIELDS` / `DELETE_TYPE_DEFINITION_FIELDS`: add fields, rename or retype existing ones, or remove them.
 - `REORDER_TYPE_DEFINITION_FIELDS`: set the order the type's fields are rendered and emitted in — pass every field name, in the order wanted.
-- `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` / `COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE`: copy a type between the shared list and a single feature (see below).
+- `PUBLISH_OBJECT_TYPE` / `COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE`: cross between the shared list and a single feature (see below).
 
 A field's type is a `typeIdentifier`: `s:p:<primitive>` (string, bigint, decimal, boolean, timestamptz, timetz, date, jsonb, image, video, file, geo_point), or `u:o:<typeId>` / `u:e:<enumId>` for a nested object or enum type. Read that shape to recognise what comes back, but never assemble one — pick the identifier out of `GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES` and copy it verbatim, since one that names nothing, or a type this slot does not take, is rejected. Arrays are not listed — the nesting has no end — so a list field is that same identifier with the field's `arrayLevel` set (1 = list, 2 = list of lists), never brackets written into the identifier.
 
 Rename and retype through `UPDATE_TYPE_DEFINITION_FIELDS` rather than delete + re-add: a rename carries the field's references along with it, where a re-add breaks every one of them. Retyping away from an image / video / file or JSON type still drops the references, because nothing that pointed at the old shape can read the new one — check usages and warn the user first. Deleting a field, or a type that is still referenced, breaks those references the same way.
 
 ### Shared vs feature-owned object types
-A public type is an entry in the project's shared object type list. A private one belongs to a single feature — a webhook request body, an API JSON body, an action flow's output — and is not listed. Do NOT flip `private` with `UPDATE_OBJECT_TYPE_DEFINITIONS` to share or unshare a shape: that MOVES the type the feature is already using, so the feature's contract silently becomes an editor-listed type everything else can bind to (or stops being one). Copy instead:
-- `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC`: put a copy of a private type into the shared list, leaving the feature on the original. Read `GET_OBJECT_TYPE_DEFINITION_GROUPS` first — the copy joins that configuration.
-- `COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE`: take a feature-owned copy of a shared type, so that one feature can diverge without changing the shape for everyone else.
-
-Either way the copy is a NEW type with a new id, and nothing points at it yet: the feature keeps using the old type until you set that slot's type to the `typeIdentifier` the result echoes.
+A public type is an entry in the project's shared object type list. A private one belongs to a single feature — a webhook request body, an API JSON body, an action flow's output — and is not listed. Cross that line only through these two tools; `UPDATE_OBJECT_TYPE_DEFINITIONS` does not change visibility:
+- `PUBLISH_OBJECT_TYPE`: publish a private type into the shared list. The type keeps its id, so the slot that owns it keeps working; read `GET_OBJECT_TYPE_DEFINITION_GROUPS` first — the type joins that configuration.
+- `COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE`: take a feature-owned (private) copy of a shared type, so one feature can diverge without changing the shape for everyone else. The copy is a NEW anonymous private type with a new id and nothing points at it yet: set that slot's type to the `typeIdentifier` the result echoes, in the same batch.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.4 login
+npx -y zion-mcp@2.8.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.5 login
 # create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
 # clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
-npx -y zion-mcp@2.8.4 project create --projectName "My App" --appType WEB
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.4 projects search):
-npx -y zion-mcp@2.8.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.5 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.5 projects search):
+npx -y zion-mcp@2.8.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.5 schema load                               # warm the schema session
 ```
 
 `project set-current` also makes the project's only client the current one, which is what pages and
@@ -67,7 +65,7 @@ APIs, permissions, secrets).
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -91,9 +89,9 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | Types an object type's field accepts | `GET_TYPE_DEFINITION_FIELD_SELECTABLE_TYPES` | — |
 | Rename or retype an object type's fields | `UPDATE_TYPE_DEFINITION_FIELDS` | `fields`, `typeId` |
 | Reorder an object type's fields | `REORDER_TYPE_DEFINITION_FIELDS` | `orderedFieldNames`, `typeId` |
-| Publish a private object type as reusable | `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` | `displayName`, `typeId` |
+| Publish a private object type as reusable | `PUBLISH_OBJECT_TYPE` | `displayName`, `typeId` |
 | Take a private copy of a public object type | `COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE` | `typeId` |
-| Read object-type group config (before adding a type) | `GET_OBJECT_TYPE_DEFINITION_GROUPS` | — |
+| Read object-type group config (before adding or publishing a type) | `GET_OBJECT_TYPE_DEFINITION_GROUPS` | — |
 | Add object types | `ADD_OBJECT_TYPE_DEFINITIONS` | `types` |
 | Update object types | `UPDATE_OBJECT_TYPE_DEFINITIONS` | `types` |
 | Delete object types | `DELETE_OBJECT_TYPE_DEFINITIONS` | `typeIds` |
@@ -103,7 +101,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 | File object types into a group | `MOVE_OBJECT_TYPE_DEFINITIONS_TO_GROUP` | `items` |
 | Rename/retype an object type's fields in place | `UPDATE_TYPE_DEFINITION_FIELDS` | `fields`, `typeId` |
 | Reorder an object type's fields | `REORDER_TYPE_DEFINITION_FIELDS` | `orderedFieldNames`, `typeId` |
-| Publish a private object type as a reusable one | `COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC` | `displayName`, `typeId` |
+| Publish a private object type as a reusable one | `PUBLISH_OBJECT_TYPE` | `displayName`, `typeId` |
 | Take a private copy of a public object type | `COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE` | `typeId` |
 | Add fields to an object type | `ADD_TYPE_DEFINITION_FIELDS` | `fields`, `typeId` |
 | Delete fields from an object type | `DELETE_TYPE_DEFINITION_FIELDS` | `fieldNames`, `typeId` |
@@ -111,7 +109,7 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 ## Worked example: an OrderStatus enum
 
 ```bash
-npx -y zion-mcp@2.8.4 schema tool-call --toolCalls '[
+npx -y zion-mcp@2.8.5 schema tool-call --toolCalls '[
   {"name":"ADD_ENUM_DEFINITIONS","args":{"enums":[
     {"displayName":"OrderStatus","options":[
       {"name":"PENDING"},
@@ -160,8 +158,8 @@ Create custom object types, each with a displayName and its initial fields. Ids 
 
 ### `UPDATE_OBJECT_TYPE_DEFINITIONS`
 
-Update object types' own metadata (displayName / description / private); omitted fields are unchanged. Fields are edited with ADD_TYPE_DEFINITION_FIELDS / UPDATE_TYPE_DEFINITION_FIELDS / DELETE_TYPE_DEFINITION_FIELDS instead. `private` MOVES the type between the shared list and its owning feature — to share or unshare a shape without moving it, use COPY_PRIVATE_OBJECT_TYPE_AS_PUBLIC / COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE.
-- `types` *(required)*: `map<string, {description?: string, displayName?: string, private?: boolean}>` — Map of object type id to the fields to update (null fields are unchanged).
+Update object types' own metadata (displayName / description); omitted fields are unchanged. Fields are edited with ADD_TYPE_DEFINITION_FIELDS / UPDATE_TYPE_DEFINITION_FIELDS / DELETE_TYPE_DEFINITION_FIELDS instead. To cross between the shared list and an owning feature, use PUBLISH_OBJECT_TYPE / COPY_PUBLIC_OBJECT_TYPE_AS_PRIVATE.
+- `types` *(required)*: `map<string, {description?: string, displayName?: string}>` — Map of object type id to the fields to update (null fields are unchanged).
 
 ### `ADD_TYPE_DEFINITION_FIELDS`
 
@@ -174,6 +172,6 @@ Add fields to an existing object type.
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.8.4 schema validate && npx -y zion-mcp@2.8.4 project sync-backend
+npx -y zion-mcp@2.8.5 schema validate && npx -y zion-mcp@2.8.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

@@ -62,7 +62,7 @@ Loops and Condition branches are **one-way scopes**. From *inside* a block, a no
 To carry a branch- or loop-dependent value past the block, use a **flow variable** — the only output that crosses a scope boundary. Declare it once with `ADD_ACTION_FLOW_GLOBAL_VARIABLES` (type copied from `GET_ACTION_FLOW_SELECTABLE_TYPES`), assign it *inside* the branch or loop body with a Set Variable node (`ADD_GLOBAL_VARIABLES_NODE_TARGETS`), then read the variable from any later node. Idioms: choose a value by branch — assign the SAME variable in every branch, then read it after the merge; capture or accumulate across a Loop — assign the variable inside the loop body, then read it after the loop's end. A branch that never assigns the variable leaves its prior value, so set a sensible default before the branch when every path must yield one.
 
 ### Concurrency
-Concurrent invocations of the same flow interleave between nodes; sync-mode ACID rolls back on error but does NOT serialize flows (read committed). Query-a-row, branch, then write based on that read is a race: concurrent calls all act on the same stale read. Where the platform can express the check inside the write, prefer that: put row-local guards in the mutation node's own filter (update where stock >= qty; delete where the key pair matches) and branch on the write's affected rows; use an update node's increment/decrement mode for counters; for insert-if-absent or toggle semantics use a unique constraint (the only DB-enforced constraint kind today) with `insert ... on_conflict do nothing` and branch on affected_rows — that idiom is only expressible in a Run Code node, which makes it a legitimate Run Code use. Invariants none of these can express (cross-row rules, aggregates) have no atomic form yet; check-then-write is the accepted fallback there.
+Concurrent invocations of the same flow interleave between nodes; sync-mode ACID rolls back on error but does NOT serialize flows (read committed). Query-a-row, branch, then write based on that read is a race: concurrent calls all act on the same stale read. Where the platform can express the check inside the write, prefer that: put row-local guards in the mutation node's own filter (update where stock >= qty; delete where the key pair matches) and branch on the write's affected rows; use an update node's increment/decrement mode for counters; for insert-if-absent or toggle semantics use a unique constraint (the only DB-enforced constraint kind today) as the insert node's conflict target with action 'none' (`UPDATE_ACTION_FLOW_NODE`'s `onConflict`), then branch on whether the insert returned a row — a skipped conflict returns no row. Invariants none of these can express (cross-row rules, aggregates) have no atomic form yet; check-then-write is the accepted fallback there.
 
 ### Error Handling
 Synchronous: all DB changes roll back on error. Asynchronous: only the failing node's DB changes roll back.
@@ -81,17 +81,17 @@ The list above is the methods you will reach for, not the whole API. The complet
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.4 login
+npx -y zion-mcp@2.8.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.5 login
 # create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
 # clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
-npx -y zion-mcp@2.8.4 project create --projectName "My App" --appType WEB
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.4 projects search):
-npx -y zion-mcp@2.8.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.5 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.5 projects search):
+npx -y zion-mcp@2.8.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.5 schema load                               # warm the schema session
 ```
 
 `project set-current` also makes the project's only client the current one, which is what pages and
@@ -102,7 +102,7 @@ APIs, permissions, secrets).
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -189,14 +189,15 @@ output-field **types** are copied
 verbatim from `GET_ACTION_FLOW_SELECTABLE_TYPES` — never hand-built.
 
 **An update / delete record node ships with an always-true default filter, so it matches every row until you
-narrow it.** Add `where` conditions with the request-filter ops (`GET_REQUEST_FILTER_CONTEXT` →
-`ADD_REQUEST_FILTER_CONDITION`) on the node's filters before syncing, or the write hits the whole table.
+narrow it.** Read the node's filters with `GET_REQUEST_FILTER_CONTEXT`, then add `where` conditions
+with the ops its filter's `whereTrack` names (see `data-binding.md`) before syncing, or the write
+hits the whole table.
 
 > Flow outputs use `SET_ACTION_FLOW_OUTPUT` / `CLEAR_ACTION_FLOW_OUTPUT`, and Run Code nodes use `SET_CUSTOM_CODE_NODE_OUTPUT_TYPE` / `CLEAR_CUSTOM_CODE_NODE_OUTPUT_TYPE`.
 
 AI / video nodes must be async (`isAsync=true`). Discover node/ids via `GET_ACTION_FLOW_DETAIL`; fill node value bindings with `data-binding.md`.
 
-**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Plan with `npx -y zion-mcp@2.8.4 actionflow list-node-templates` (display names plus input/output param types; it carries no id). To add one, read the add-node menu with `BROWSE_ACTION_FLOW_ADD_NODE_OPTIONS` at the position and pass that entry's `node` to `ADD_ACTION_FLOW_NODE`, then bind its inputs at the node's `schemaPath` per `data-binding.md`.
+**Preset integration nodes (dynamic catalog):** beyond the built-in node types above, the editor exposes a server-managed set of published `TEMPLATE_CODE` templates (SMS, file/media helpers, video/AI generation, …) that varies by deployment — never assume a specific provider exists. Plan with `npx -y zion-mcp@2.8.5 actionflow list-node-templates` (display names plus input/output param types; it carries no id). To add one, read the add-node menu with `BROWSE_ACTION_FLOW_ADD_NODE_OPTIONS` at the position and pass that entry's `node` to `ADD_ACTION_FLOW_NODE`, then bind its inputs at the node's `schemaPath` per `data-binding.md`.
 
 ## Arguments (generated from ztype)
 
@@ -267,7 +268,7 @@ Insert a node immediately after an existing node (afterNodeId). Read node ids fr
 - `actionFlowId` *(required)*: `string`
 - `afterNodeId` *(required)*: `string` — Insert the new node immediately after this node (its uniqueId).
 - `displayName`: `string` — Optional display name; a name left off becomes the node's own default — the template's name for a template entry, otherwise the localized node-type name.
-- `node` *(required)*: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | BRANCH_SEPARATION → {branchNames?: array<string>} | BREAK → {} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | DELAY → {unit?: enum(MILLISECOND|SECOND|MINUTE|HOUR)} | FOR_EACH_START → {} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {tableDisplayName?: string} | QUERY_RECORD → {limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId: string} | THIRD_PARTY_API → {thirdPartyApiId?: string} | THROW → {} | UPDATE_GLOBAL_VARIABLES → {} | WHILE_START → {}` — The node to add — the `node` of the entry BROWSE_ACTION_FLOW_ADD_NODE_OPTIONS returns at this same position. Its config fields may be overridden; its `type` and `templateCodeId` select the entry and must name one the menu offers here.
+- `node` *(required)*: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | BRANCH_SEPARATION → {branchNames?: array<string>} | BREAK → {} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | DELAY → {unit?: enum(MILLISECOND|SECOND|MINUTE|HOUR)} | FOR_EACH_START → {} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {tableDisplayName?: string, whereTrack?: enum(COLUMN_WHERE|WHERE_CONDITION)} | QUERY_RECORD → {limit?: integer, tableDisplayName?: string, whereTrack?: enum(COLUMN_WHERE|WHERE_CONDITION)} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId: string} | THIRD_PARTY_API → {thirdPartyApiId?: string} | THROW → {} | UPDATE_GLOBAL_VARIABLES → {} | WHILE_START → {}` — The node to add — the `node` of the entry BROWSE_ACTION_FLOW_ADD_NODE_OPTIONS returns at this same position. Its config fields may be overridden; its `type` and `templateCodeId` select the entry and must name one the menu offers here.
   - `node.configId` *(when `type=AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE`)* — The ZAI config id this node uses; configure later when omitted. For AI_CREATE_CONVERSATION the config's declared inputs are seeded into inputArgs as empty bindings.
   - `node.taskId` *(when `type=AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE`)* — The ZAI task id (for AI_CREATE_CONVERSATION / AI_SEND_MESSAGE).
   - `node.branchNames` *(when `type=BRANCH_SEPARATION`)* — Display names of the initial branches; two empty branches are created when omitted.
@@ -276,6 +277,7 @@ Insert a node immediately after an existing node (afterNodeId). Read node ids fr
   - `node.unit` *(when `type=DELAY`)* — The time unit of the delay duration; defaults to SECOND. A delay only runs in an asynchronous flow (isAsync); in a synchronous one it is reported as an error. Set the duration with the CREATE_*_BINDING tools at the node's `duration` path.
   - `node.tableDisplayName` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD`)* — Display name of the target table; defaults to the table the add-node menu offers. A table named here must be one the menu would offer: editable, not hidden, and (for insert/delete) not the account table. The table's editable columns are seeded into the mutation's data object as empty bindings.
   - `node.tableDisplayName` *(when `type=QUERY_RECORD`)* — Display name of the table to query; defaults to the table the add-node menu offers. A table named here must be one the menu could offer for a query: editable, or one of the platform's own queryable tables.
+  - `node.whereTrack` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD|QUERY_RECORD`)* — Track the new node's Default filter is seeded on: WHERE_CONDITION (when unset) seeds the condition-expression `whereCondition`, edited with the condition tools; COLUMN_WHERE the column-comparison `where`, edited with the *_REQUEST_FILTER_CONDITION tools. Leave it unset unless the user explicitly asks for the column-comparison track.
   - `node.limit` *(when `type=QUERY_RECORD`)* — Row limit, between 1 and 1000; defaults to 1. With a limit of 1 the node returns the table type; with a limit greater than 1 it returns a list of that table type.
   - `node.roleUuid` *(when `type=ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT`)* — uuid of the role to add/remove; select it later when omitted.
   - `node.templateCodeId` *(when `type=TEMPLATE_CODE`)* — The uniqueId of the template code to run (provided by the caller). The template's declared inputs are seeded into inputArgsDataBinding (each input's default value, or an empty type-seeded binding); fill them with the CREATE_*_BINDING tools.
@@ -285,7 +287,7 @@ Insert a node immediately after an existing node (afterNodeId). Read node ids fr
 
 Edit a node's display name or type-specific scalar config (e.g. queried table, row limit, target flow). Data-binding config — values, conditions, data sources, mutation fields — is edited with the bindings plugin, not here.
 - `actionFlowId` *(required)*: `string`
-- `config`: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | DELAY → {unit?: enum(MILLISECOND|SECOND|MINUTE|HOUR)} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {clearOnConflict?: boolean, onConflict?: {actionType?: enum(none|update), constraintName?: string}, tableDisplayName?: string} | QUERY_RECORD → {clearLimit?: boolean, limit?: integer, tableDisplayName?: string} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId?: string} | THIRD_PARTY_API → {operation?: string, thirdPartyApiId?: string}` — Node-type-specific scalar config to update. Its `type` must match the node's actual type; fields left null are unchanged. Only non-data-binding scalars are editable here — data-binding config (mutation set values, conditions, dataSource, input args, target account, AI message) is edited with the CREATE_*_BINDING tools at the node's schema path, and a query/mutation's conditions/sort live in its `filters` — edit them via GET_REQUEST_FILTER_CONTEXT and the *_REQUEST_* tools at the node's schema path.
+- `config`: `object · type: AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE → {configId?: string, taskId?: string} | ACTION_FLOW → {targetActionFlowId?: string} | CUSTOM_CODE → {code?: string} | DELAY → {unit?: enum(MILLISECOND|SECOND|MINUTE|HOUR)} | INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD → {clearOnConflict?: boolean, onConflict?: {actionType?: enum(none|update), constraintName?: string}, tableDisplayName?: string, whereTrack?: enum(COLUMN_WHERE|WHERE_CONDITION)} | QUERY_RECORD → {clearLimit?: boolean, limit?: integer, tableDisplayName?: string, whereTrack?: enum(COLUMN_WHERE|WHERE_CONDITION)} | ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT → {roleUuid?: string} | TEMPLATE_CODE → {templateCodeId?: string} | THIRD_PARTY_API → {operation?: string, thirdPartyApiId?: string}` — Node-type-specific scalar config to update. Its `type` must match the node's actual type; fields left null are unchanged. Only non-data-binding scalars are editable here — data-binding config (mutation set values, conditions, dataSource, input args, target account, AI message) is edited with the CREATE_*_BINDING tools at the node's schema path, and a query/mutation's conditions/sort live in its `filters` — edit them via GET_REQUEST_FILTER_CONTEXT and the *_REQUEST_* tools at the node's schema path.
   - `config.configId` *(when `type=AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE`)* — The ZAI config id this node uses. On AI_CREATE_CONVERSATION, switching it re-seeds inputArgs from the new config's declared inputs; re-sending the current id adds the inputs the config has declared since, keeping the bindings already made.
   - `config.taskId` *(when `type=AI_CREATE_CONVERSATION|AI_SEND_MESSAGE|AI_DELETE_CONVERSATION|AI_STOP_RESPONSE`)* — The ZAI task id (only AI_CREATE_CONVERSATION / AI_SEND_MESSAGE).
   - `config.targetActionFlowId` *(when `type=ACTION_FLOW`)* — uniqueId of the action flow to call; switching it re-seeds inputArgs from the new flow's declared input args.
@@ -297,6 +299,7 @@ Edit a node's display name or type-specific scalar config (e.g. queried table, r
   - `config.onConflict.constraintName` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD`)* — Name of the unique constraint whose violation counts as a conflict, from GET_TABLES_INFO's `constraints` (each entry lists the columns it covers). Omit to keep the current target and only change [actionType].
   - `config.tableDisplayName` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD`)* — New target table (display name); resets the mutation's filters and conflict handling, and re-seeds its data object from the new table's editable columns. A table named here must be one the menu would offer: editable, not hidden, and (for insert/delete) not the account table.
   - `config.tableDisplayName` *(when `type=QUERY_RECORD`)* — New table or view to query (display name); resets the query's filters. A table named here must be one the menu could offer for a query: editable, or one of the platform's own queryable tables.
+  - `config.whereTrack` *(when `type=INSERT_RECORD|UPDATE_RECORD|DELETE_RECORD|QUERY_RECORD`)* — Track the Default filter is re-seeded on when [tableDisplayName] resets the filters; accepted only together with [tableDisplayName]. WHERE_CONDITION (when unset) seeds the condition-expression `whereCondition`, COLUMN_WHERE the column-comparison `where`; the track the old filters used does not carry over. Set it only when the user explicitly asks for the column-comparison track.
   - `config.clearLimit` *(when `type=QUERY_RECORD`)* — Set true to drop the row limit, so the query returns every matching row. Data bindings may then only reference the node's aggregate data. Not accepted together with [limit].
   - `config.limit` *(when `type=QUERY_RECORD`)* — New row limit, between 1 and 1000. With a limit of 1 the node returns the table type; with a limit greater than 1 it returns a list of that table type.
   - `config.roleUuid` *(when `type=ADD_ROLE_TO_ACCOUNT|REMOVE_ROLE_FROM_ACCOUNT`)* — uuid of the role to add/remove.
@@ -470,6 +473,6 @@ Extract method for flows: move one contiguous run of nodes (node ids from GET_AC
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.8.4 schema validate && npx -y zion-mcp@2.8.4 project sync-backend
+npx -y zion-mcp@2.8.5 schema validate && npx -y zion-mcp@2.8.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

@@ -1,8 +1,15 @@
 # BaaS runtime — data queries
 
 ## Querying Zion data (auto-generated GraphQL over PostgreSQL)
-The schema is generated from the data model — introspect the live schema before assuming exact
-fields/enums. Each table [table] generates:
+The schema is generated from the data model. Every name and type derived from a table follows
+from the rules below and what the data-model read reports for it — each column's apiName and
+type, each relation, each unique constraint's name (the primary key's is [table]_pkey) — so a
+table needs no introspection unless its latest changes are not synced yet. Introspect the live
+schema only for what no data-model read describes: built-in platform types and operations,
+custom object and enum types, and the arguments and results of actionflows, AI agents and
+APIs. Introspection is answered for the admin identity only, and each of __schema, __type,
+fields and inputFields may appear once per document: look up one type per call.
+Each table [table] generates:
 - Queries: [table] (list; where/order_by/distinct_on/limit/offset), [table]_by_pk (by id),
   [table]_aggregate (count/sum/avg/min/max), [table]_group_by. A geo_point column adds
   fz_[table]_by_[column] (proximity search); Relay pagination adds a Connection_[table] query.
@@ -123,8 +130,8 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-npx -y zion-mcp@2.8.4 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-npx -y zion-mcp@2.8.4 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.8.5 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+npx -y zion-mcp@2.8.5 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
 `runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 

@@ -2,7 +2,7 @@
 
 ## Payment System Domain Knowledge
 Zion's payment system is built around a developer-owned **order table** plus a set of platform-managed payment records and the Actionflows that react to gateway callbacks. On Zion the legacy gateways are WeChat Pay (mini-program and H5/JSAPI) and Alipay (PC web; one-time plus recurring "agreement" subscriptions); payment-config projects also offer Stripe. Airwallex is available on both models where it is enabled for the project. There are two payment models, and GET_PAYMENT_CONFIGS's `legacyPaymentModel` says which one the project uses:
-- **Legacy**: activate the module with ACTIVATE_PAYMENT, which generates the gateway Actionflows and webhooks. The gateway credentials, the brand assets and the Pro-plan upgrade are the user's own, in the editor (Action → Payment).
+- **Legacy**: activate the module with ACTIVATE_PAYMENT, which generates the gateway Actionflows and webhooks. The gateway credentials, the brand assets and the Pro-plan upgrade are the user's own, in the editor (行为 → 支付).
 - **Payment configs**: add a config with ADD_PAYMENT_CONFIGS; the first add initializes the payment tables. Credentials (project secrets), products, clients and callback flows are edited through the payment tools; only brand assets and the plan upgrade stay in the editor.
 
 ### Prerequisites (in order)
@@ -12,7 +12,7 @@ Zion's payment system is built around a developer-owned **order table** plus a s
    - **Legacy** (`legacyPaymentModel: true`): call ACTIVATE_PAYMENT with the order table's display name. It appends the type's generated flows/callbacks/jobs and grants the logged-in user role permission; a first activation inserts the payment tables. The order table is fixed by the first activation and ignored afterwards. It names what it created; say so in your answer.
    - **Payment configs**: call ADD_PAYMENT_CONFIGS with one or more items. On the first add also pass the order table's display name — it inserts the payment tables; later adds omit it. Each item's provider must be one the product offers (see above). Every item mints a payment config and its empty PAYMENT_CALLBACK and grants every role the provider's default billing methods; several configs may share a provider.
 4. Configure credentials.
-   - Legacy: the gateway credentials are the user's own, in the editor (Action → Payment) — WeChat Pay (merchant ID, APIv2 key, linked Mini Program AppID, apiclient_cert.p12 for refunds), Alipay (app ID and RSA2 key pair) and/or Airwallex (client ID, API key, webhook secret).
+   - Legacy: the gateway credentials are the user's own, in the editor (行为 → 支付) — WeChat Pay (merchant ID, APIv2 key, linked Mini Program AppID, apiclient_cert.p12 for refunds), Alipay (app ID and RSA2 key pair) and/or Airwallex (client ID, API key, webhook secret).
    - Payment configs: every credential field and the product choice come from the user; never invent a value or leave a required field empty. Collect them before UPDATE_PAYMENT_CONFIGS:
      - Secret fields (Alipay's app private key, WeChat Pay's API key): reuse a secret from GET_ALL_SECRET_CONFIGS or have the user type the value with secret save-value.
      - Text fields are not secret, and there is no card for them: ask for each one in a chat turn and wait for the reply. For Alipay that is the **app ID** and the **Alipay public key**, for WeChat Pay the **AppID** and **merchant ID**. Saving the private key does not supply them.
@@ -77,17 +77,17 @@ GET_PAYMENT_CONFIGS decides the model. Legacy: ACTIVATE_PAYMENT turns the module
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.4 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.4 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.4 login
+npx -y zion-mcp@2.8.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.5 login
 # create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
 # clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
-npx -y zion-mcp@2.8.4 project create --projectName "My App" --appType WEB
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.4 projects search):
-npx -y zion-mcp@2.8.4 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.4 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.5 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.5 projects search):
+npx -y zion-mcp@2.8.5 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.5 schema load                               # warm the schema session
 ```
 
 `project set-current` also makes the project's only client the current one, which is what pages and
@@ -98,7 +98,7 @@ APIs, permissions, secrets).
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.4 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -234,6 +234,6 @@ Bind or unbind the Actionflow that runs for one payment event kind on a payment 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.8.4 schema validate && npx -y zion-mcp@2.8.4 project sync-backend
+npx -y zion-mcp@2.8.5 schema validate && npx -y zion-mcp@2.8.5 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

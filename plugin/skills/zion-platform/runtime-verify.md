@@ -42,9 +42,11 @@ There is no fire-a-trigger tool, for anyone — the editor cannot do it either. 
 A schedule cannot be fired on demand at all: only the flow it points at can be debug-run, and the cron expression and end date can only be read as configuration, so the schedule itself stays unverified.
 
 ### What you leave behind
-Nothing you write here can be taken back. There is no undo tool and no cleanup tool: a row from `runtime.insert`, an account from `runtime.as_user`, an overwritten column, a deleted row, and whatever a trigger did in response are all simply in the user's app now. A rollback debug run leaves nothing; every row written any other way is one the user will find.
+What you overwrite or delete here cannot be taken back. There is no undo tool: an overwritten column, a deleted row, and whatever a trigger did in response are simply in the user's app now. A rollback debug run leaves nothing; every row written any other way is one the user will find.
 
-What you do owe the user is an account of it. Rows you inserted and accounts you created are recorded with their ids, and you are reminded of them as you work — finish a verification run by saying what you created and in which table, so they can delete it from the data table if they want to. "I added some test data" is not a handover; "I added order#41 and order#42, and account 9931 with role Customer" is.
+Only what you added can be removed again, and only part of it. A row from `runtime.insert` goes with `runtime.delete` by its id once the check no longer needs it. An account from `runtime.as_user` stays: no tool here deletes an account.
+
+What you do owe the user is an account of what is left. Rows you inserted and accounts you created are recorded with their ids, a row drops off that record when `runtime.delete` removes it, and you are reminded of the rest as you work — finish a verification run by saying what is still there and in which table, so they can delete it from the data table if they want to. "I added some test data" is not a handover; "I added order#41 and order#42, and account 9931 with role Customer" is.
 
 The wire protocol for each of these calls — the query language, filter grammar, aggregations, action-flow and AI invocation, third-party calls and asset upload — is documented in the `baas-*` capabilities.
 
@@ -59,20 +61,20 @@ agents), not editing the editor schema. Endpoints (`{projectExId}` = the project
 Exercise runtime queries/mutations straight from this CLI — already authenticated with the admin token:
 
 ```bash
-npx -y zion-mcp@2.8.4 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
-npx -y zion-mcp@2.8.4 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
+npx -y zion-mcp@2.8.5 runtime graphql --args '{"query":"query { <root_op> { ... } }","variables":{}}'
+npx -y zion-mcp@2.8.5 runtime query   --args '{"tableName":"post","where":{"id":{"_eq":1}},"limit":20,"fields":["id","title"]}'
 ```
 `runtime graphql` sends **raw** GraphQL (use the operator-first `where` grammar in `baas-database.md`); `runtime query/insert/update/delete` are typed helpers that take the **simplified** `where` (see `schema-table.md`). Subscriptions (async action-flow results, AI streaming) run from your generated frontend over the WebSocket endpoint (legacy `subscriptions-transport-ws` framing — see `baas-database.md`) — this CLI does not open runtime subscriptions.
 
 ## How to drive it (CLI)
 
 ```bash
-npx -y zion-mcp@2.8.4 runtime query --tableName order --where '{"status":{"_eq":"PAID"}}' --fields '["id","status","total"]'
-npx -y zion-mcp@2.8.4 runtime insert --tableName order --objects '[{"status":"PAID","total":100}]'
-npx -y zion-mcp@2.8.4 runtime update --tableName order --where '{"id":{"_eq":42}}' --set '{"status":"SHIPPED"}'
-npx -y zion-mcp@2.8.4 runtime delete --tableName order --where '{"id":{"_eq":42}}'
-npx -y zion-mcp@2.8.4 runtime graphql --query 'query { order_aggregate { aggregate { count } } }'
-npx -y zion-mcp@2.8.4 runtime run-code --jsCode 'const total = 2 + 2; total;'
+npx -y zion-mcp@2.8.5 runtime query --tableName order --where '{"status":{"_eq":"PAID"}}' --fields '["id","status","total"]'
+npx -y zion-mcp@2.8.5 runtime insert --tableName order --objects '[{"status":"PAID","total":100}]'
+npx -y zion-mcp@2.8.5 runtime update --tableName order --where '{"id":{"_eq":42}}' --set '{"status":"SHIPPED"}'
+npx -y zion-mcp@2.8.5 runtime delete --tableName order --where '{"id":{"_eq":42}}'
+npx -y zion-mcp@2.8.5 runtime graphql --query 'query { order_aggregate { aggregate { count } } }'
+npx -y zion-mcp@2.8.5 runtime run-code --jsCode 'const total = 2 + 2; total;'
 ```
 
 `runtime run-code` executes the snippet in the app's Run Code sandbox and returns its value, with
@@ -84,13 +86,13 @@ These run against the **deployed** app through the admin channel, which bypasses
 permissions — a row you can read here is not necessarily a row your users can read.
 
 ### Yours alone
-Both you and the in-editor agent can deploy the backend — `npx -y zion-mcp@2.8.4 project sync-backend` here,
+Both you and the in-editor agent can deploy the backend — `npx -y zion-mcp@2.8.5 project sync-backend` here,
 `deploy.sync_backend` there — and either way the loop is the same: edit, deploy, then test what
 you deployed, because a runtime call always hits the DEPLOYED app. These two have no in-editor
 counterpart at all:
 
-- `npx -y zion-mcp@2.8.4 schema validate` — type-check the loaded schema before deploying it.
-- `npx -y zion-mcp@2.8.4 site deploy` — ship a built frontend directory, with `site status` / `site abort` for the run; a PROD target needs a human to approve it.
+- `npx -y zion-mcp@2.8.5 schema validate` — type-check the loaded schema before deploying it.
+- `npx -y zion-mcp@2.8.5 site deploy` — ship a built frontend directory, with `site status` / `site abort` for the run; a PROD target needs a human to approve it.
 
 ### Not available from this CLI
 The verification contract above is written for the in-editor agent, which has tools this CLI does

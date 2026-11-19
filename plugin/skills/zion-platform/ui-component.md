@@ -145,17 +145,17 @@ A `component capture-canvas` shows what the user will see, which `schema validat
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.5 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.6 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.5 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.5 login
+npx -y zion-mcp@2.8.6 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.6 login
 # create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
 # clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
-npx -y zion-mcp@2.8.5 project create --projectName "My App" --appType WEB
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.5 projects search):
-npx -y zion-mcp@2.8.5 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.5 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.6 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.6 projects search):
+npx -y zion-mcp@2.8.6 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.6 schema load                               # warm the schema session
 ```
 
 `project set-current` also makes the project's only client the current one, which is what pages and
@@ -166,7 +166,7 @@ APIs, permissions, secrets).
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.5 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.6 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.
@@ -230,11 +230,11 @@ A batch is all-or-nothing: when any call in the array fails, the whole batch's c
 
 Component writes go through the CLI like any other edit: `GET_COMPONENT_TEMPLATE` then `ADD_COMPONENT` to build, `UPDATE_COMPONENT_STYLE` to restyle, `MOVE_COMPONENTS` to restructure, `ADD_COMPONENT_ACTIONS` to wire events, `DELETE_COMPONENTS` to remove — see "Building & Editing the Component Tree" above. A screen can be schema-valid and still look wrong: verify structurally with `GET_CONTAINER_CHILDREN_INFO` and `GET_INCOMPLETE_STRUCTURES` (its `responsiveRisks` catches the desktop-width-on-phone case), and where appearance is the acceptance criterion, look at it with `component capture-canvas` (see "Reading A Screenshot" above) rather than guessing.
 
-The preset tab-bar icon library is reachable: `npx -y zion-mcp@2.8.5 component tab-bar-icons` lists every icon this deployment ships as a name and the media exId `UPDATE_TAB_BAR_ITEMS` takes. A shown tab needs an icon for both its normal and its selected state or the project reports an error, and the exIds are hashids of media rows that cannot be derived from an icon's name — a value that could not be an exId is refused by the write rather than failing the mini-program build over a file it cannot find, so take them from that listing and never invent one. An icon the library does not ship still has to be brought in through the editor (`web-assets.md`) or picked there by the user: nothing here imports media.
+The preset tab-bar icon library is reachable: `npx -y zion-mcp@2.8.6 component tab-bar-icons` lists every icon this deployment ships as a name and the media exId `UPDATE_TAB_BAR_ITEMS` takes. A shown tab needs an icon for both its normal and its selected state or the project reports an error, and the exIds are hashids of media rows that cannot be derived from an icon's name — a value that could not be an exId is refused by the write rather than failing the mini-program build over a file it cannot find, so take them from that listing and never invent one. An icon the library does not ship still has to be brought in through the editor (`web-assets.md`) or picked there by the user: nothing here imports media.
 
 Then ship:
 
 ```bash
-npx -y zion-mcp@2.8.5 schema validate && npx -y zion-mcp@2.8.5 project sync-backend
+npx -y zion-mcp@2.8.6 schema validate && npx -y zion-mcp@2.8.6 project sync-backend
 ```
 `project sync-backend` aborts with `SAVE_SCHEMA_WITHOUT_PATCHES` when nothing is pending — make at least one change before shipping.

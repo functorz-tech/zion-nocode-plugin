@@ -30,6 +30,7 @@ Format: - {relative_path}: {page_title}
   - /docs/actions/guide/payment/payment_reference: 支付参考
   - /docs/actions/guide/payment/payment_stripe: Stripe 支付
   - /docs/actions/guide/payment/payment_wechat_miniprogram: 微信支付（微信小程序）
+  - /docs/actions/guide/payment/payment_wechat_virtual: 微信虚拟支付（微信小程序）
   - /docs/actions/guide/payment/payment_wechat_web: 微信支付（Web 应用）
   - /docs/actions/guide/sso_configuration: 使用第三方登录
   - /docs/actions/guide/verification_code: 发送和校验验证码
@@ -185,8 +186,8 @@ Format: - {relative_path}: {page_title}
 Read-only — no schema session needed.
 
 ```bash
-npx -y zion-mcp@2.8.5 docs search --query "how to configure wechat pay / alipay payments"
-npx -y zion-mcp@2.8.5 docs get-page --path "/03_data/01_database_basics"
+npx -y zion-mcp@2.8.6 docs search --query "how to configure wechat pay / alipay payments"
+npx -y zion-mcp@2.8.6 docs get-page --path "/03_data/01_database_basics"
 ```
 
 `docs search` returns `{ path, title, url }` ranked by relevance; `url` is a public HTTPS link you can cite. Pass a returned `path` to `docs get-page` to read the full markdown. Search before answering how-to questions, and ground every claim in the retrieved page.

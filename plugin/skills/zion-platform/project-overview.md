@@ -14,17 +14,17 @@ Both are read-only; neither mutates the schema.
 
 ## How to drive it (CLI only)
 
-All commands are `npx -y zion-mcp@2.8.6 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
+All commands are `npx -y zion-mcp@2.8.7 <verb>`. A long-lived daemon holds the in-memory CRDT schema session
 between calls. **Edits do NOT go live until `project sync-backend`.**
 
 ```bash
-npx -y zion-mcp@2.8.6 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.6 login
+npx -y zion-mcp@2.8.7 whoami                                    # check auth; if needed: npx -y zion-mcp@2.8.7 login
 # create a NEW project (auto-pins it and its client; BACKEND_ONLY only if the front end is hosted elsewhere):
 # clients: WEB | WECHAT_MINI_PROGRAM | MOBILE | BACKEND_ONLY
-npx -y zion-mcp@2.8.6 project create --projectName "My App" --appType WEB
-# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.6 projects search):
-npx -y zion-mcp@2.8.6 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.6 schema load                               # warm the schema session
+npx -y zion-mcp@2.8.7 project create --projectName "My App" --appType WEB
+# …or pin an EXISTING one (find its exId with npx -y zion-mcp@2.8.7 projects search):
+npx -y zion-mcp@2.8.7 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.7 schema load                               # warm the schema session
 ```
 
 `project set-current` also makes the project's only client the current one, which is what pages and
@@ -35,7 +35,7 @@ APIs, permissions, secrets).
 Operations run through one verb:
 
 ```bash
-npx -y zion-mcp@2.8.6 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
+npx -y zion-mcp@2.8.7 schema tool-call --toolCalls '[{"name":"<TOOL_NAME>","args":{ ... }}]'
 ```
 Each call is applied immediately — any resulting CRDT patch is uploaded. Batch several calls in one array; use `schema undo` to revert the last change.
 A batch is all-or-nothing: when any call in the array fails, the whole batch's changes are discarded even though the other calls returned success — only the failing call's error is reported, so after a batch error re-read (`GET_*`) before assuming anything persisted.

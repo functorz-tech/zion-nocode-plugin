@@ -1,3 +1,12 @@
+# Data source
+
+`directions.csv` and `styles.csv` are column extracts of ui-ux-pro-max (nextlevelbuilder/ui-ux-pro-max-skill, commit 4f2dbb67e64969a9a30ab00742f2d55d66ddec2b, `.claude/skills/ui-ux-pro-max/data/`), with no values rewritten:
+
+- `directions.csv`: one row per `products.csv` row — `Product Type`, `Keywords`, `Primary Style Recommendation`, `Secondary Styles`; from the `ui-reasoning.csv` row of the same name `Color_Mood`, `Typography_Mood`, `Key_Effects`, `Anti_Patterns`; from the `colors.csv` row of the same name `Primary`, `Secondary`, `Accent`, `Background`, `Card`, `Foreground`, `Muted Foreground`, `Border`, `Destructive`.
+- `styles.csv`: every `styles.csv` row not `deprecated` — `Style Category`, `Keywords`, `Primary Colors`, `Secondary Colors`, `Effects & Animation`, `Do Not Use For`, `Preferred Mode`, `Design System Variables`.
+
+Its licence:
+
 MIT License
 
 Copyright (c) 2024 Next Level Builder

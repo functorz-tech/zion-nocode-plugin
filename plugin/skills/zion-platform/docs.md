@@ -125,6 +125,7 @@ Format: - {relative_path}: {page_title}
   - /templates/ecommerce/ecommerce_template_tutorial: 电商模板使用教程
   - /templates/services/home_services_template_tutorial: 家政服务模板使用教程
   - /templates/services/official_wechat_mini_program_template_tutorial: Zion 官方小程序模板使用教程
+  - /templates/services/wechat_service_account_template_tutorial: 微信服务号管理模板使用教程
   - /templates/utilities/ai_assistant_template_tutorial: AI 助理模板使用教程
   - /templates/utilities/illustrated_guide_template_tutorial: 图鉴模板使用教程
   - /templates/utilities/onboarding_template_tutorial: 新手引导项目使用教程
@@ -186,8 +187,8 @@ Format: - {relative_path}: {page_title}
 Read-only — no schema session needed.
 
 ```bash
-npx -y zion-mcp@2.8.6 docs search --query "how to configure wechat pay / alipay payments"
-npx -y zion-mcp@2.8.6 docs get-page --path "/03_data/01_database_basics"
+npx -y zion-mcp@2.8.7 docs search --query "how to configure wechat pay / alipay payments"
+npx -y zion-mcp@2.8.7 docs get-page --path "/03_data/01_database_basics"
 ```
 
 `docs search` returns `{ path, title, url }` ranked by relevance; `url` is a public HTTPS link you can cite. Pass a returned `path` to `docs get-page` to read the full markdown. Search before answering how-to questions, and ground every claim in the retrieved page.

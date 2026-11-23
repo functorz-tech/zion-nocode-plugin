@@ -6,13 +6,15 @@ description: >-
 
 # Zion platform orientation
 
-Before reading platform guidance, identify the active project and pin it when needed:
+At the start of a session, identify the active project and pin it:
 
 ```bash
-npx -y zion-mcp@2.8.6 projects search --projectName "My App"
-npx -y zion-mcp@2.8.6 project set-current --projectExId <exId>
-npx -y zion-mcp@2.8.6 schema load
+npx -y zion-mcp@2.8.7 projects search --projectName "My App"
+npx -y zion-mcp@2.8.7 project set-current --projectExId <exId>
+npx -y zion-mcp@2.8.7 schema load
 ```
+
+**Agent files** are the project's persistent notes, shared with its built-in AI assistant and stored on the platform, not on this machine. `project set-current` prints the project's `AGENTS.md` files and an index of every file, and `agent-files snapshot` prints them again. Read and change them with `agent-files read|write|edit|list|grep|rename|delete` (`agent-files <verb> --help` lists each verb's flags): `/project/...` is shared with every collaborator on the project, `/user/...` is private to you and follows you into all your projects.
 
 Read only the capability files needed for the task.
 
@@ -26,7 +28,7 @@ Each capability is a sibling file in this skill folder. When a task calls for on
 - **Database schema (tables, fields, relations, constraints)** (`schema-table.md`) — Create, modify, or delete database tables, columns, relations, and unique constraints. Use when designing or changing the data model (adding a table, field, relation, or constraint), or when you need column-type rules, naming conventions, or system-table constraints.
 - **Enums & custom types** (`schema-type.md`) — Create, edit, and inspect enum types and their options, and custom object types and their fields. Use before referencing an enum as a database column type, when adding, renaming, or removing enum options, or when a reusable structured type is needed.
 - **Data binding** (`data-binding.md`) — Connect a UI component to the data it displays: populate a list or text from a database query, a page or global variable, or the logged-in user; or set a literal constant. Use when an existing component needs live data or a value bound to it, rather than to create or lay out the component itself.
-- **UI components & layout** (`ui-component.md`) — Inspect and build the UI component tree and page data. Read tools list pages and return a component's info, its tree context (ancestors/siblings), a container's children, and a component's bindable property slots (each with its ready-to-use binding schemaPath). Write tools create components from type templates, move/reorder them across containers, restyle them (colors, sizes, spacing, text styles), mutate special-component slots (tabs, condition branches, optional slots), wire events to action flows, page navigation, direct database CRUD mutations, and query refreshes, manage page queries/variables/inputs, SEO path ranges and global SEO settings, the app's initial page and the client's app-wide variables, the project's sign-in methods (which decide the sign-up / sign-in actions on offer), and delete subtrees. Data bindings are filled with the bindings plugin's tools at the schemaPaths these tools echo. Custom verification-code delivery channels — the named SMS/email senders backed by an action flow — are configured here too.
+- **UI components & layout** (`ui-component.md`) — Inspect and build the UI component tree and page data. Read tools list pages and return a component's info, its tree context (ancestors/siblings), a container's children, and a component's bindable property slots (each with its ready-to-use binding schemaPath). Write tools create components from type templates, move/reorder them across containers, restyle them (colors, sizes, spacing, text styles), mutate special-component slots (tabs, condition branches, optional slots), wire events to action flows, page navigation, direct database CRUD mutations, and query refreshes, manage page queries/variables/inputs, SEO path ranges, global SEO settings and page SEO fields, the app's initial page and the client's app-wide variables, the project's sign-in methods (which decide the sign-up / sign-in actions on offer), and delete subtrees. Data bindings are filled with the bindings plugin's tools at the schemaPaths these tools echo. Custom verification-code delivery channels — the named SMS/email senders backed by an action flow — are configured here too.
 - **Global theme (variables & scrollbar)** (`global-theme.md`) — Read and edit the client's design system: colour palettes and variables, font families, sizes and weights, radii, spacings and shadows that components reference instead of carrying their own values. Components reference these variables, so a change here restyles every component that uses them; it works alongside the `component` plugin.
 - **Action flows (server-side workflows)** (`actionflow.md`) — Inspect and edit server-side action flows: the workflows that run business logic on a button press, a schedule (cron), a database-change event, or a webhook. Use for genuinely multi-step, transactional, or server-only logic such as cross-table writes, trusted calculations, API calls, branching, loops, schedules, and triggers. Do not use merely to wrap simple CRUD when data permissions fully authorize a direct frontend operation.
 - **API integrations (external HTTP data sources)** (`api.md`) — Inspect and build the project's API integration library — workspaces of external HTTP endpoints (method, URL, typed request parameters + response shapes) plus shared workspace constants for secrets / base URLs — usable as a project data source. The action-flow "Call API" nodes invoke these workspace APIs.
@@ -52,4 +54,4 @@ Each capability is a sibling file in this skill folder. When a task calls for on
 
 For broad architecture or cross-domain planning, read `platform-overview.md`.
 
-> **Always invoke the CLI exactly as written above** — via `npx -y zion-mcp@2.8.6` — never bare `zion-mcp`, even though `--help` prints its own name that way. The `@2.8.6` version pin runs this plugin's exact published build, so a globally-installed `zion-mcp` (or `zion`) on `PATH` can't shadow it.
+> **Always invoke the CLI exactly as written above** — via `npx -y zion-mcp@2.8.7` — never bare `zion-mcp`, even though `--help` prints its own name that way. The `@2.8.7` version pin runs this plugin's exact published build, so a globally-installed `zion-mcp` (or `zion`) on `PATH` can't shadow it.
